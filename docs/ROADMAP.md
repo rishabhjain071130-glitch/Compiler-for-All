@@ -31,45 +31,56 @@ gantt
 ## 2. Phase-by-Phase Details
 
 ### Phase 1: Project Setup (`01_PROJECT_SETUP.md`)
-*   **Goal**: Establish a robust, linted, monorepo-style structure containing both client (React + Vite) and server (Node + TypeScript) directories.
-*   **Key Deliverable**: Configuration files (`package.json`, `tsconfig.json`, `.eslintrc`, `.prettierrc`) and server/client boilerplate.
+
+- **Goal**: Establish a robust, linted, monorepo-style structure containing both client (React + Vite) and server (Node + TypeScript) directories.
+- **Key Deliverable**: Configuration files (`package.json`, `tsconfig.json`, `.eslintrc`, `.prettierrc`) and server/client boilerplate.
 
 ### Phase 2: UI/UX Foundation (`02_UI_UX.md`)
-*   **Goal**: Design the layout, color palette, and responsiveness of the application shell.
-*   **Key Deliverable**: A premium glassmorphic dark-theme UI skeleton containing the editor area, inputs/outputs panel, status bars, and custom CSS style variables.
+
+- **Goal**: Design the layout, color palette, and responsiveness of the application shell.
+- **Key Deliverable**: A premium glassmorphic dark-theme UI skeleton containing the editor area, inputs/outputs panel, status bars, and custom CSS style variables.
 
 ### Phase 3: Code Editor Integration (`03_CODE_EDITOR.md`)
-*   **Goal**: Embed Monaco Editor into the UI and connect it to a stateful buffer.
-*   **Key Deliverable**: Monaco Editor component integrated with theme matching, autosave capabilities, cursor state hooks, and client-side model updates.
+
+- **Goal**: Embed Monaco Editor into the UI and connect it to a stateful buffer.
+- **Key Deliverable**: Monaco Editor component integrated with theme matching, autosave capabilities, cursor state hooks, and client-side model updates.
 
 ### Phase 4: Language Detection Engine (`04_LANGUAGE_DETECTION.md`)
-*   **Goal**: Build the multi-signal language detection engine.
-*   **Key Deliverable**: A library utility (`detector.ts`) that runs static code analysis against C, C++, Java, Python, and JavaScript code. Includes comprehensive unit tests.
+
+- **Goal**: Build the multi-signal language detection engine.
+- **Key Deliverable**: A library utility (`detector.ts`) that runs static code analysis against C, C++, Java, Python, and JavaScript code. Includes comprehensive unit tests.
 
 ### Phase 5: Compiler Engine Configuration (`05_COMPILER_ENGINE.md`)
-*   **Goal**: Set up the backend compiler command generators and execution router.
-*   **Key Deliverable**: Compiler configuration structures mapping supported languages to their compilation/interpretation commands (e.g. GCC, G++, OpenJDK, Node, Python).
+
+- **Goal**: Set up the backend compiler command generators and execution router.
+- **Key Deliverable**: Compiler configuration structures mapping supported languages to their compilation/interpretation commands (e.g. GCC, G++, OpenJDK, Node, Python).
 
 ### Phase 6: Code Execution Layer (`06_CODE_EXECUTION.md`)
-*   **Goal**: Construct the backend execution mechanism to run scripts locally.
-*   **Key Deliverable**: Backend endpoints spawning child processes to compile and run user code, piping inputs (`stdin`) and capturing output streams (`stdout`/`stderr`).
+
+- **Goal**: Construct the backend execution mechanism to run scripts locally.
+- **Key Deliverable**: Backend endpoints spawning child processes to compile and run user code, piping inputs (`stdin`) and capturing output streams (`stdout`/`stderr`).
 
 ### Phase 7: Error Parsing & Formatting (`07_ERROR_HANDLING.md`)
-*   **Goal**: Parse complex compiler/interpreter dump files into readable notifications for beginners.
-*   **Key Deliverable**: Regex-based error sanitizers that highlight source lines and translate raw memory dumps or syntax crashes into human-friendly explanations.
+
+- **Goal**: Parse complex compiler/interpreter dump files into readable notifications for beginners.
+- **Key Deliverable**: Regex-based error sanitizers that highlight source lines and translate raw memory dumps or syntax crashes into human-friendly explanations.
 
 ### Phase 8: Sandbox Security Isolation (`08_SECURITY_SANDBOX.md`)
-*   **Goal**: Harden the server against malicious code (fork bombs, directory traversal, resource hogging).
-*   **Key Deliverable**: Integration of gVisor-based Docker containers to run execution steps with restricted CPU, memory, filesystem, and networking privileges.
+
+- **Goal**: Harden the server against malicious code (fork bombs, directory traversal, resource hogging).
+- **Key Deliverable**: Integration of gVisor-based Docker containers to run execution steps with restricted CPU, memory, filesystem, and networking privileges.
 
 ### Phase 9: Testing & Benchmarking (`09_TESTING.md`)
-*   **Goal**: Ensure high-reliability execution under stress.
-*   **Key Deliverable**: Integration and end-to-end tests verifying normal compiler runs, handling edge-case inputs, blocking malicious operations, and performing basic load tests.
+
+- **Goal**: Ensure high-reliability execution under stress.
+- **Key Deliverable**: Integration and end-to-end tests verifying normal compiler runs, handling edge-case inputs, blocking malicious operations, and performing basic load tests.
 
 ### Phase 10: UX Polish & Animations (`10_POLISH.md`)
-*   **Goal**: Refine frontend animations, visual cues, loading skeletons, and editor tooltips.
-*   **Key Deliverable**: Polished styling, transition micro-animations, network error banners, and execution speed metrics indicators.
+
+- **Goal**: Refine frontend animations, visual cues, loading skeletons, and editor tooltips.
+- **Key Deliverable**: Polished styling, transition micro-animations, network error banners, and execution speed metrics indicators.
 
 ### Phase 11: Production Deployment (`11_DEPLOYMENT.md`)
-*   **Goal**: Bundle frontend and server assets and deploy to host environments.
-*   **Key Deliverable**: Production-ready Docker Compose orchestration config, reverse proxy setups, and a detailed deployment manual.
+
+- **Goal**: Bundle frontend and server assets and deploy to host environments.
+- **Key Deliverable**: Production-ready Docker Compose orchestration config, reverse proxy setups, and a detailed deployment manual.

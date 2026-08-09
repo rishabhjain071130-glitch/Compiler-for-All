@@ -31,39 +31,43 @@ graph TD
 ## 2. Component breakdown
 
 ### 2.1 Web Frontend
-*   **Technology Stack**: React (v18+), Vite, TypeScript, Vanilla CSS for styling.
-*   **Key Responsibilities**:
-    *   Integrate the **Monaco Editor** for a rich IDE-like coding experience.
-    *   Perform *client-side speculative language detection* to adjust syntax highlighting dynamically as the user types (debounce rate: 500ms).
-    *   Maintain console states: input buffer (stdin), standard output (stdout), compilation/runtime errors (stderr), and execution metrics (execution time, memory limit indicators).
-    *   Minimalist UI with glassmorphic aesthetics, custom dark mode, and micro-animations for status transitions.
+
+- **Technology Stack**: React (v18+), Vite, TypeScript, Vanilla CSS for styling.
+- **Key Responsibilities**:
+  - Integrate the **Monaco Editor** for a rich IDE-like coding experience.
+  - Perform _client-side speculative language detection_ to adjust syntax highlighting dynamically as the user types (debounce rate: 500ms).
+  - Maintain console states: input buffer (stdin), standard output (stdout), compilation/runtime errors (stderr), and execution metrics (execution time, memory limit indicators).
+  - Minimalist UI with glassmorphic aesthetics, custom dark mode, and micro-animations for status transitions.
 
 ### 2.2 Backend API Gateway
-*   **Technology Stack**: Node.js, Express (or Fastify), TypeScript.
-*   **Key Responsibilities**:
-    *   Expose endpoints for code execution (`POST /api/execute`) and health monitoring.
-    *   Perform *server-side authoritative language detection* prior to compilation/interpretation.
-    *   Rate limit incoming requests to prevent Denial of Service (DoS) attacks.
-    *   Validate payload sizes (maximum code payload: 64KB; maximum stdin: 16KB).
-    *   Coordinate container orchestration for execution requests.
+
+- **Technology Stack**: Node.js, Express (or Fastify), TypeScript.
+- **Key Responsibilities**:
+  - Expose endpoints for code execution (`POST /api/execute`) and health monitoring.
+  - Perform _server-side authoritative language detection_ prior to compilation/interpretation.
+  - Rate limit incoming requests to prevent Denial of Service (DoS) attacks.
+  - Validate payload sizes (maximum code payload: 64KB; maximum stdin: 16KB).
+  - Coordinate container orchestration for execution requests.
 
 ### 2.3 Language Detection Module
-*   **Technology Stack**: TypeScript helper library (shared between frontend and backend).
-*   **Algorithm**: Multi-Signal Heuristic Scoring.
-    *   **Signal A: Imports & Includes** (e.g., `#include <iostream>`, `import java.util.*`).
-    *   **Signal B: Key Syntax Patterns** (e.g., `public static void main`, `def `, `const `, `function`).
-    *   **Signal C: Syntactic Markers** (semi-colons, braces, pythonic indentation structures).
-    *   **Signal D: Keyword Frequency** (`cout`, `printf`, `System.out.println`, `console.log`).
+
+- **Technology Stack**: TypeScript helper library (shared between frontend and backend).
+- **Algorithm**: Multi-Signal Heuristic Scoring.
+  - **Signal A: Imports & Includes** (e.g., `#include <iostream>`, `import java.util.*`).
+  - **Signal B: Key Syntax Patterns** (e.g., `public static void main`, `def `, `const `, `function`).
+  - **Signal C: Syntactic Markers** (semi-colons, braces, pythonic indentation structures).
+  - **Signal D: Keyword Frequency** (`cout`, `printf`, `System.out.println`, `console.log`).
 
 ### 2.4 Security Sandbox (Docker Service)
-*   **Technology Stack**: Docker, gVisor runtime (`runsc`) for kernel-level security isolation.
-*   **Isolating Constraints**:
-    *   **Network**: No internet access inside the running containers (`--network none`).
-    *   **CPU**: 0.5 CPU core limit per execution (`--cpus="0.5"`).
-    *   **Memory**: 64MB RAM limit per execution (`-m 64m --memory-swap 64m`).
-    *   **Storage**: Read-only root filesystem, except for `/tmp` mounted as a temporary RAM-disk (tmpfs) limited to 5MB.
-    *   **Time Limit**: Hard timeout of 5 seconds for execution; compiler timeout of 8 seconds.
-    *   **User Privileges**: Run inside the container as a non-root user (`uid=1000, gid=1000`).
+
+- **Technology Stack**: Docker, gVisor runtime (`runsc`) for kernel-level security isolation.
+- **Isolating Constraints**:
+  - **Network**: No internet access inside the running containers (`--network none`).
+  - **CPU**: 0.5 CPU core limit per execution (`--cpus="0.5"`).
+  - **Memory**: 64MB RAM limit per execution (`-m 64m --memory-swap 64m`).
+  - **Storage**: Read-only root filesystem, except for `/tmp` mounted as a temporary RAM-disk (tmpfs) limited to 5MB.
+  - **Time Limit**: Hard timeout of 5 seconds for execution; compiler timeout of 8 seconds.
+  - **User Privileges**: Run inside the container as a non-root user (`uid=1000, gid=1000`).
 
 ---
 
@@ -80,10 +84,10 @@ graph TD
     ```
 4.  **Backend Authoritative Analysis**: The backend receives the code, runs the multi-signal detection module, and determines the language is `python`.
 5.  **Sandbox Spawning**: The backend generates a temporary file structure, writes the code to a file inside a volume, and executes a Docker run command targeting the appropriate pre-built language image:
-    *   **C/C++**: GCC-based image compiles (`gcc main.c -o main`) and executes (`./main`).
-    *   **Java**: OpenJDK compiles (`javac Main.java`) and runs (`java Main`).
-    *   **Python**: Python slim runtime runs (`python3 main.py`).
-    *   **JavaScript**: Node.js slim runtime runs (`node main.js`).
+    - **C/C++**: GCC-based image compiles (`gcc main.c -o main`) and executes (`./main`).
+    - **Java**: OpenJDK compiles (`javac Main.java`) and runs (`java Main`).
+    - **Python**: Python slim runtime runs (`python3 main.py`).
+    - **JavaScript**: Node.js slim runtime runs (`node main.js`).
 6.  **Response Aggregation**: Standard output, standard error, exit codes, and compile status are captured, sanitized (stripping system directories and path leakages), and returned:
     ```json
     {
@@ -100,7 +104,7 @@ graph TD
 
 ## 4. Error Hierarchy
 
-*   **System Errors (5xx)**: Sandbox allocation failure, container timeouts.
-*   **Compilation Errors**: Language-specific compiler warnings/errors returned in `stderr` with `status: "compilation_error"`.
-*   **Runtime Errors**: Execution-level failures (e.g., Segment faults, NullPointerExceptions, division by zero) returned in `stderr` with `status: "runtime_error"`.
-*   **Sandbox Violation Errors**: Triggered when the code exceeds memory, CPU, or write limits, returned in `stderr` with `status: "resource_limit_exceeded"`.
+- **System Errors (5xx)**: Sandbox allocation failure, container timeouts.
+- **Compilation Errors**: Language-specific compiler warnings/errors returned in `stderr` with `status: "compilation_error"`.
+- **Runtime Errors**: Execution-level failures (e.g., Segment faults, NullPointerExceptions, division by zero) returned in `stderr` with `status: "runtime_error"`.
+- **Sandbox Violation Errors**: Triggered when the code exceeds memory, CPU, or write limits, returned in `stderr` with `status: "resource_limit_exceeded"`.
