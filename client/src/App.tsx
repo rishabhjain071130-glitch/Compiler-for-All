@@ -12,13 +12,16 @@ interface ExecutionResult {
     | "runtime_error"
     | "resource_limit_exceeded"
     | "timeout"
+    | "runner_unavailable"
     | "error"
     | null;
+  errorCode?: string;
   stdout: string;
   stderr: string;
   exitCode: number | null;
   timeMs: number | null;
   compilationOutput?: string;
+  message?: string;
 }
 
 const DEFAULT_CODE = `#include <stdio.h>
@@ -65,11 +68,28 @@ export default function App() {
         }),
       });
 
+      if (response.status === 503) {
+        const errData = await response.json();
+        setResult({
+          status: "runner_unavailable",
+          errorCode: "RUNNER_UNAVAILABLE",
+          stdout: "",
+          stderr: "",
+          exitCode: null,
+          timeMs: null,
+          message: errData.message,
+        });
+        setActiveTab("output");
+        setExecuting(false);
+        return;
+      }
+
       if (response.status === 400) {
         const errData = await response.json();
         if (errData.code === "TOOLCHAIN_NOT_FOUND") {
           setResult({
             status: "error",
+            errorCode: "TOOLCHAIN_NOT_FOUND",
             stdout: "",
             stderr: "Execution environment unavailable",
             exitCode: null,
@@ -109,6 +129,8 @@ export default function App() {
 
       if (resData.status === "compilation_error") {
         setActiveTab("compiler");
+      } else if (resData.status === "runner_unavailable") {
+        setActiveTab("output");
       } else {
         setActiveTab("output");
       }

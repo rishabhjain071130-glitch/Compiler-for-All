@@ -6,7 +6,7 @@ This document tracks the active state and progress of the **Compiler for All** i
 
 ## 1. Progress Summary
 
-- **Overall Completion**: `54%` (6 of 11 Phases Completed)
+- **Overall Completion**: `54%` (6 of 11 Phases Completed — Phase 6 security-corrected)
 - **Active Phase**: Phase 07: Error Parsing & Friendly Formatting
 - **Last Updated**: 2026-08-09
 
@@ -21,7 +21,7 @@ This document tracks the active state and progress of the **Compiler for All** i
 | **03** | Monaco Code Editor Integration            | **Completed** |   2026-08-09    | [03_CODE_EDITOR.md](file:///d:/Github/Compiler-for-All/prompts/03_CODE_EDITOR.md)               |
 | **04** | Multi-Signal Language Detection Engine    | **Completed** |   2026-08-09    | [04_LANGUAGE_DETECTION.md](file:///d:/Github/Compiler-for-All/prompts/04_LANGUAGE_DETECTION.md) |
 | **05** | Compiler Engine Configuration Router      | **Completed** |   2026-08-09    | [05_COMPILER_ENGINE.md](file:///d:/Github/Compiler-for-All/prompts/05_COMPILER_ENGINE.md)       |
-| **06** | Local Child Process Code Execution Layer  | **Completed** |   2026-08-09    | [06_CODE_EXECUTION.md](file:///d:/Github/Compiler-for-All/prompts/06_CODE_EXECUTION.md)         |
+| **06** | Local Child Process Code Execution Layer  | **Completed** |   2026-08-09    | [06_CODE_EXECUTION.md](file:///d:/Github/Compiler-for-All/prompts/06_CODE_EXECUTION.md) ⚠️ Security-corrected |
 | **07** | Error Parsing & Friendly Formatting       |  **Planned**  |        -        | [07_ERROR_HANDLING.md](file:///d:/Github/Compiler-for-All/prompts/07_ERROR_HANDLING.md)         |
 | **08** | Sandbox Isolation Security Layer (Docker) |  **Planned**  |        -        | [08_SECURITY_SANDBOX.md](file:///d:/Github/Compiler-for-All/prompts/08_SECURITY_SANDBOX.md)     |
 | **09** | End-to-End Testing & Security Audit       |  **Planned**  |        -        | [09_TESTING.md](file:///d:/Github/Compiler-for-All/prompts/09_TESTING.md)                       |
@@ -32,7 +32,52 @@ This document tracks the active state and progress of the **Compiler for All** i
 
 ## 3. Active Work Logs
 
-### 2026-08-09 (Phase 6 Code Execution Layer Completed)
+### 2026-08-09 (Phase 6 Security Correction — Execution Boundary Isolation)
+
+**Problem identified**: The initial Phase 6 implementation (`LocalCodeRunner`) contained `child_process.spawn` calls that directly executed untrusted user source code (gcc, g++, javac, python3, node) on the host operating system. This violates the project's security architecture.
+
+**Unsafe paths removed**:
+- `LocalCodeRunner` class deleted entirely from `server/src/compiler/runner.ts`
+- `child_process.spawn` (lines 124, 190 of previous implementation) — **removed**
+- `fs`, `crypto`, `spawn`, `performance` imports that supported host execution — **removed**
+
+**New execution architecture**:
+```
+Frontend
+    ↓
+POST /api/execute
+    ↓
+Execution Service (execute.ts) — validates payload, detects language server-side
+    ↓
+CodeRunner interface — isolated runner abstraction boundary
+    ↓
+SandboxUnavailableRunner  [Phase 6/7 default — returns structured error, zero host execution]
+MockCodeRunner            [test environment only — simulates all result types]
+[Future] SandboxRunner    [Phase 8 — Docker/gVisor isolated container]
+```
+
+**`CodeRunner` interface** (unchanged, preserved as-is):
+```typescript
+interface CodeRunner {
+  run(code: string, stdin: string, language: string): Promise<ExecutionResult>
+}
+```
+
+**`SandboxUnavailableRunner` behavior**: Returns `{ status: "runner_unavailable", errorCode: "RUNNER_UNAVAILABLE" }` for every request. No child process, no fs writes, no code execution. The execution service returns HTTP 503 to the frontend.
+
+**Frontend behavior**: Displays an amber "⚙️ Sandbox Not Available" panel — clearly distinguished from errors, timeouts, and successful execution.
+
+**Security review results**: Zero `child_process`, `spawn`, `exec`, `execFile`, or `fork` calls reachable through any API route. The only `child_process` references in the codebase are in code comments.
+
+**Test coverage (48 tests total — all pass)**:
+- `SandboxUnavailableRunner`: returns `runner_unavailable` for all 5 languages, never executes code
+- HTTP 503 returned when runner is unavailable
+- `MockCodeRunner`: success, compilation failure, runtime error, timeout, runner_unavailable, stdin/source separation
+- Client injection prevention: `language`, `execPath`, `args` fields in request body are ignored — server detection is authoritative
+- Payload constraints (empty code, >64KB code, >16KB stdin) enforced before runner is called
+
+**Phase 8 plan**: `SandboxUnavailableRunner` will be replaced by a `DockerSandboxRunner` that runs user code inside a Docker/gVisor isolated container with restricted syscalls, no network access, and resource limits.
+
 
 - Implemented `server/src/compiler/runner.ts` with `LocalCodeRunner` and `MockCodeRunner` classes.
 - `LocalCodeRunner` creates a UUID-keyed temp workspace per run, writes source code to disk, and spawns child processes using `child_process.spawn` (never `exec`).
@@ -45,7 +90,6 @@ This document tracks the active state and progress of the **Compiler for All** i
 - Updated `client/src/App.tsx` and `client/src/components/Console.tsx` to handle `compilationOutput` field and `"error"` status from the real execution engine.
 - All 34 tests pass (12 shared + 22 server). Build, lint, and format checks all clean.
 - Pushed commit `e06209f` to GitHub `main` branch.
-
 
 - Designed a centralized registry type schema (`server/src/compiler/config.ts`) defining source file naming rules, compilation flags, and execution commands.
 - Implemented a Java public classname scanner (`server/src/compiler/parser.ts`) to extract `public class [Classname]` declarations to map file-naming and execution commands dynamically (falling back to `Main.java` if missing, or `main.[ext]` for other languages).

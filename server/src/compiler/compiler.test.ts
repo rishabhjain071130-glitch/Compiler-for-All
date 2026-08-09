@@ -9,10 +9,19 @@ import {
 } from "./config.js";
 import { extractJavaClassName, getFileMapping, generateCommands } from "./parser.js";
 import executeRouter, { activeRunner } from "../routes/execute.js";
-import { MockCodeRunner, sanitizeOutput, resolveExecutionCommand } from "./runner.js";
+import {
+  MockCodeRunner,
+  SandboxUnavailableRunner,
+  sanitizeOutput,
+  resolveExecutionCommand,
+} from "./runner.js";
 
+// ---------------------------------------------------------------------------
+// Response shape used by the integration tests
+// ---------------------------------------------------------------------------
 interface TestResponse {
   status?: string;
+  errorCode?: string;
   detectedLanguage?: string;
   compilationCommand?: string[] | null;
   executionCommand?: string[];
@@ -22,8 +31,13 @@ interface TestResponse {
   code?: string;
   language?: string;
   error?: string;
+  message?: string;
   compilationOutput?: string;
 }
+
+// ===========================================================================
+// 1. Configuration Registry
+// ===========================================================================
 
 describe("Compiler Engine Configuration Registry", () => {
   it("resolves configs case-insensitively", () => {
@@ -43,6 +57,10 @@ describe("Compiler Engine Configuration Registry", () => {
   });
 });
 
+// ===========================================================================
+// 2. Toolchain Availability Checker
+// ===========================================================================
+
 describe("Toolchain Availability Checker", () => {
   afterEach(() => {
     setMockUnavailableToolchains([]);
@@ -61,6 +79,10 @@ describe("Toolchain Availability Checker", () => {
     expect(res.executable).toBe("gcc");
   });
 });
+
+// ===========================================================================
+// 3. Java Public Class Extraction
+// ===========================================================================
 
 describe("Java Public Class Extraction", () => {
   it("extracts public classname when present in source code", () => {
@@ -83,6 +105,10 @@ describe("Java Public Class Extraction", () => {
   });
 });
 
+// ===========================================================================
+// 4. File Mapper and Command Generators
+// ===========================================================================
+
 describe("File Mapper and Command Generators", () => {
   it("maps Java file structure according to classname rules", () => {
     const codeWithClass = "public class QuickSort {}";
@@ -97,7 +123,7 @@ describe("File Mapper and Command Generators", () => {
     expect(mappingHelper.classname).toBe("Main");
   });
 
-  it("generates correct structured command arguments arrays for C++", () => {
+  it("generates correct structured command argument arrays for C++", () => {
     const code = "int main() {}";
     const commands = generateCommands("C++", code);
 
@@ -124,6 +150,10 @@ describe("File Mapper and Command Generators", () => {
   });
 });
 
+// ===========================================================================
+// 5. Path Sanitization and Command Resolution Safety
+// ===========================================================================
+
 describe("Path Sanitization and Command Resolution Safety", () => {
   it("strips absolute path names from compiler console stdout/stderr", () => {
     const rawOut =
@@ -144,6 +174,109 @@ describe("Path Sanitization and Command Resolution Safety", () => {
   });
 });
 
+// ===========================================================================
+// 6. SandboxUnavailableRunner — safe default runner
+// ===========================================================================
+
+describe("SandboxUnavailableRunner (safe default)", () => {
+  it("returns runner_unavailable status for C code — never executes host processes", async () => {
+    const runner = new SandboxUnavailableRunner();
+    const result = await runner.run("#include <stdio.h>\nint main(){}", "", "C");
+
+    expect(result.status).toBe("runner_unavailable");
+    expect(result.errorCode).toBe("RUNNER_UNAVAILABLE");
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBeNull();
+  });
+
+  it("returns runner_unavailable for all supported languages without executing code", async () => {
+    const runner = new SandboxUnavailableRunner();
+    const langs = ["C", "C++", "Java", "Python", "JavaScript"];
+
+    for (const lang of langs) {
+      const result = await runner.run("some code", "", lang);
+      expect(result.status).toBe("runner_unavailable");
+      expect(result.errorCode).toBe("RUNNER_UNAVAILABLE");
+      expect(result.stdout).toBe("");
+    }
+  });
+
+  it("includes a descriptive message explaining sandbox unavailability", async () => {
+    const runner = new SandboxUnavailableRunner();
+    const result = await runner.run("print('hello')", "", "Python");
+    expect(result.message).toContain("isolated execution environment");
+    expect(result.message).toContain("No user code was executed");
+  });
+});
+
+// ===========================================================================
+// 7. MockCodeRunner — test adapter (no host execution)
+// ===========================================================================
+
+describe("MockCodeRunner (test-only adapter)", () => {
+  it("returns success without executing any host process", async () => {
+    const runner = new MockCodeRunner();
+    const result = await runner.run("console.log('hi')", "", "JavaScript");
+    expect(result.status).toBe("success");
+    expect(result.stdout).toContain("Simulated JavaScript Run");
+  });
+
+  it("simulates runner_unavailable correctly", async () => {
+    const runner = new MockCodeRunner();
+    runner.setMockFailure("Python", "runner_unavailable");
+    const result = await runner.run("print('hi')", "", "Python");
+    expect(result.status).toBe("runner_unavailable");
+    expect(result.errorCode).toBe("RUNNER_UNAVAILABLE");
+    expect(result.stdout).toBe("");
+  });
+
+  it("simulates compilation failure correctly", async () => {
+    const runner = new MockCodeRunner();
+    runner.setMockFailure("C++", "compilation_error");
+    const result = await runner.run("int main() {", "", "C++");
+    expect(result.status).toBe("compilation_error");
+    expect(result.errorCode).toBe("COMPILATION_FAILED");
+    expect(result.compilationOutput).toContain("error: expected ';'");
+  });
+
+  it("simulates runtime failure correctly", async () => {
+    const runner = new MockCodeRunner();
+    runner.setMockFailure("Python", "runtime_error");
+    const result = await runner.run("print(1/0)", "", "Python");
+    expect(result.status).toBe("runtime_error");
+    expect(result.stderr).toContain("division by zero");
+  });
+
+  it("simulates timeout correctly", async () => {
+    const runner = new MockCodeRunner();
+    runner.setMockFailure("Python", "timeout");
+    const result = await runner.run("while True: pass", "", "Python");
+    expect(result.status).toBe("timeout");
+    expect(result.errorCode).toBe("EXECUTION_TIMEOUT");
+    expect(result.timeMs).toBe(5000);
+  });
+
+  it("keeps stdin and source code separate — stdin echoed, never executed", async () => {
+    const runner = new MockCodeRunner();
+    const result = await runner.run("print(input())", "hello world", "Python");
+    expect(result.status).toBe("success");
+    expect(result.stdout).toContain("stdin");
+    expect(result.stdout).toContain("hello world");
+  });
+
+  it("returns errorCode UNSUPPORTED_LANGUAGE for unknown language", async () => {
+    const runner = new MockCodeRunner();
+    const result = await runner.run("code", "", "COBOL");
+    expect(result.status).toBe("error");
+    expect(result.errorCode).toBe("UNSUPPORTED_LANGUAGE");
+  });
+});
+
+// ===========================================================================
+// 8. Execution Route Integration (POST /api/execute)
+// ===========================================================================
+
 describe("Execution Route Integration (POST /api/execute)", () => {
   let app: Express;
   let server: Server;
@@ -153,8 +286,6 @@ describe("Execution Route Integration (POST /api/execute)", () => {
     app = express();
     app.use(express.json());
     app.use("/api", executeRouter);
-
-    // Start on random port
     server = app.listen(0);
     const address = server.address() as AddressInfo;
     port = address.port;
@@ -171,7 +302,35 @@ describe("Execution Route Integration (POST /api/execute)", () => {
     }
   });
 
-  it("returns status 200 and success response for valid C++ requests", async () => {
+  // ── Scenario 1: Execution service uses the runner abstraction ─────────────
+
+  it("uses MockCodeRunner abstraction in test env — no host child process", async () => {
+    // The activeRunner must be MockCodeRunner in test environment
+    expect(activeRunner).toBeInstanceOf(MockCodeRunner);
+  });
+
+  // ── Scenario 2: SandboxUnavailableRunner returns HTTP 503 ─────────────────
+
+  it("runner_unavailable returns HTTP 503 with RUNNER_UNAVAILABLE code", async () => {
+    if (activeRunner instanceof MockCodeRunner) {
+      activeRunner.setMockFailure("python", "runner_unavailable");
+    }
+
+    const response = await fetch(`http://localhost:${port}/api/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: "print('hello')" }),
+    });
+
+    expect(response.status).toBe(503);
+    const data = (await response.json()) as TestResponse;
+    expect(data.code).toBe("RUNNER_UNAVAILABLE");
+    expect(data.message).toBeDefined();
+  });
+
+  // ── Scenario 3: Mock success ───────────────────────────────────────────────
+
+  it("returns 200 success for valid C++ code via mock runner", async () => {
     const response = await fetch(`http://localhost:${port}/api/execute`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -187,7 +346,7 @@ describe("Execution Route Integration (POST /api/execute)", () => {
     expect(data.stdout).toContain("Simulated C++ Run");
   });
 
-  it("returns status 200 and success response for Java execution requests", async () => {
+  it("returns 200 success for Java code via mock runner", async () => {
     const response = await fetch(`http://localhost:${port}/api/execute`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -202,13 +361,11 @@ describe("Execution Route Integration (POST /api/execute)", () => {
     expect(data.detectedLanguage).toBe("java");
   });
 
-  it("returns status 200 and success response for JavaScript execution requests", async () => {
+  it("returns 200 success for JavaScript code via mock runner", async () => {
     const response = await fetch(`http://localhost:${port}/api/execute`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code: "console.log('test');",
-      }),
+      body: JSON.stringify({ code: "console.log('test');" }),
     });
 
     expect(response.status).toBe(200);
@@ -217,13 +374,11 @@ describe("Execution Route Integration (POST /api/execute)", () => {
     expect(data.detectedLanguage).toBe("javascript");
   });
 
-  it("returns status 200 and success response for Python execution requests", async () => {
+  it("returns 200 success for Python code via mock runner", async () => {
     const response = await fetch(`http://localhost:${port}/api/execute`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code: "print('hello')",
-      }),
+      body: JSON.stringify({ code: "print('hello')" }),
     });
 
     expect(response.status).toBe(200);
@@ -231,6 +386,106 @@ describe("Execution Route Integration (POST /api/execute)", () => {
     expect(data.status).toBe("success");
     expect(data.detectedLanguage).toBe("python");
   });
+
+  // ── Scenario 5: Compilation failure ───────────────────────────────────────
+
+  it("returns compilation_error when compilation fails", async () => {
+    if (activeRunner instanceof MockCodeRunner) {
+      activeRunner.setMockFailure("cpp", "compilation_error");
+    }
+
+    const response = await fetch(`http://localhost:${port}/api/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: "#include <iostream>\nint main() { std::cout << 5 }", // missing semicolon
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as TestResponse;
+    expect(data.status).toBe("compilation_error");
+    expect(data.compilationOutput).toContain("error: expected ';'");
+  });
+
+  // ── Scenario 6: Runtime failure ────────────────────────────────────────────
+
+  it("returns runtime_error when script throws division by zero", async () => {
+    if (activeRunner instanceof MockCodeRunner) {
+      activeRunner.setMockFailure("python", "runtime_error");
+    }
+
+    const response = await fetch(`http://localhost:${port}/api/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: "print(1/0)" }),
+    });
+
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as TestResponse;
+    expect(data.status).toBe("runtime_error");
+    expect(data.stderr).toContain("division by zero");
+  });
+
+  // ── Scenario 7: Timeout ────────────────────────────────────────────────────
+
+  it("returns timeout when process exceeds execution limit", async () => {
+    if (activeRunner instanceof MockCodeRunner) {
+      activeRunner.setMockFailure("python", "timeout");
+    }
+
+    const response = await fetch(`http://localhost:${port}/api/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: "while True: pass" }),
+    });
+
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as TestResponse;
+    expect(data.status).toBe("timeout");
+    expect(data.stderr).toContain("execution exceeded 5 seconds");
+  });
+
+  // ── Scenario 8: Source and stdin remain separate ───────────────────────────
+
+  it("stdin payload is kept separate from source code", async () => {
+    const response = await fetch(`http://localhost:${port}/api/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: "print(input())",
+        stdin: "hello world",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as TestResponse;
+    expect(data.status).toBe("success");
+    // stdin echoed in mock, code never executed
+    expect(data.stdout).toContain("hello world");
+  });
+
+  // ── Scenarios 9-11: Client cannot inject paths, shell cmds, or args ────────
+
+  it("client cannot override detected language via body — server detection is authoritative", async () => {
+    const response = await fetch(`http://localhost:${port}/api/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: "print('hello')", // Python code
+        language: "C++", // client tries to override — must be ignored
+        execPath: "/bin/sh", // client tries to inject path — must be ignored
+        args: ["-c", "rm -rf /"], // client tries to inject args — must be ignored
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as TestResponse;
+    // Server's detector correctly identified Python
+    expect(data.detectedLanguage).toBe("python");
+  });
+
+  // ── Payload constraint checks ──────────────────────────────────────────────
 
   it("rejects empty code requests with HTTP 400", async () => {
     const response = await fetch(`http://localhost:${port}/api/execute`, {
@@ -262,10 +517,7 @@ describe("Execution Route Integration (POST /api/execute)", () => {
     const response = await fetch(`http://localhost:${port}/api/execute`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code: "print('hello')",
-        stdin: oversizedStdin,
-      }),
+      body: JSON.stringify({ code: "print('hello')", stdin: oversizedStdin }),
     });
 
     expect(response.status).toBe(400);
@@ -273,64 +525,7 @@ describe("Execution Route Integration (POST /api/execute)", () => {
     expect(data.error).toBe("Payload Too Large");
   });
 
-  it("returns compilation_error when compilation fails", async () => {
-    if (activeRunner instanceof MockCodeRunner) {
-      activeRunner.setMockFailure("cpp", "compilation_error");
-    }
-
-    const response = await fetch(`http://localhost:${port}/api/execute`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code: "#include <iostream>\nint main() { std::cout << 5 }", // missing semicolon
-      }),
-    });
-
-    expect(response.status).toBe(200);
-    const data = (await response.json()) as TestResponse;
-    expect(data.status).toBe("compilation_error");
-    expect(data.compilationOutput).toContain("error: expected ';'");
-  });
-
-  it("returns timeout when process exceeds execution limit", async () => {
-    if (activeRunner instanceof MockCodeRunner) {
-      activeRunner.setMockFailure("python", "timeout");
-    }
-
-    const response = await fetch(`http://localhost:${port}/api/execute`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code: "while True: pass",
-      }),
-    });
-
-    expect(response.status).toBe(200);
-    const data = (await response.json()) as TestResponse;
-    expect(data.status).toBe("timeout");
-    expect(data.stderr).toContain("execution exceeded 5 seconds");
-  });
-
-  it("returns runtime_error when script throws divisions by zero", async () => {
-    if (activeRunner instanceof MockCodeRunner) {
-      activeRunner.setMockFailure("python", "runtime_error");
-    }
-
-    const response = await fetch(`http://localhost:${port}/api/execute`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code: "print(1/0)",
-      }),
-    });
-
-    expect(response.status).toBe(200);
-    const data = (await response.json()) as TestResponse;
-    expect(data.status).toBe("runtime_error");
-    expect(data.stderr).toContain("division by zero");
-  });
-
-  it("returns TOOLCHAIN_NOT_FOUND when runner toolchain is missing", async () => {
+  it("returns TOOLCHAIN_NOT_FOUND when runner reports missing toolchain", async () => {
     if (activeRunner instanceof MockCodeRunner) {
       activeRunner.setMockFailure("java", "toolchain_unavailable");
     }

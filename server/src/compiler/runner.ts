@@ -1,13 +1,15 @@
-import fs from "fs";
 import path from "path";
-import crypto from "crypto";
-import { spawn } from "child_process";
-import { performance } from "perf_hooks";
-import { getLanguageConfig, checkToolchainAvailability } from "./config.js";
-import { getFileMapping } from "./parser.js";
+import { getLanguageConfig } from "./config.js";
+
+// ---------------------------------------------------------------------------
+// ExecutionResult — structured result returned by every CodeRunner
+// ---------------------------------------------------------------------------
 
 export interface ExecutionResult {
-  status: "success" | "compilation_error" | "runtime_error" | "timeout" | "error";
+  status:
+    "success" | "compilation_error" | "runtime_error" | "timeout" | "runner_unavailable" | "error";
+  /** Structured error code for programmatic handling by clients. */
+  errorCode?: string;
   detectedLanguage: string;
   compilationStatus?: number | null;
   compilationOutput?: string;
@@ -18,13 +20,26 @@ export interface ExecutionResult {
   message?: string;
 }
 
+// ---------------------------------------------------------------------------
+// CodeRunner — the isolated runner abstraction boundary.
+//
+// ALL user code execution MUST pass through this interface.
+// No implementation of this interface may invoke host-level child processes
+// against untrusted user source code without a fully isolated sandbox
+// (e.g. Docker/gVisor — planned for Phase 8).
+// ---------------------------------------------------------------------------
+
 export interface CodeRunner {
   run(code: string, stdin: string, language: string): Promise<ExecutionResult>;
 }
 
-/**
- * Escapes regex characters to safely sanitize absolute directory paths from stdout/stderr.
- */
+// ---------------------------------------------------------------------------
+// Utility: sanitizeOutput
+//
+// Strips absolute workspace directory paths from compiler/runtime output
+// before sending data to clients. Preserved for use by Phase 8 sandbox runner.
+// ---------------------------------------------------------------------------
+
 export function sanitizeOutput(
   text: string,
   workspaceDir: string,
@@ -39,9 +54,13 @@ export function sanitizeOutput(
   return sanitized;
 }
 
-/**
- * Resolves absolute execution paths on both Unix and Windows hosts to bypass shell wrappers.
- */
+// ---------------------------------------------------------------------------
+// Utility: resolveExecutionCommand
+//
+// Resolves relative binary paths (./main) to absolute workspace paths to
+// avoid shell wrapper invocations. Preserved for Phase 8 sandbox runner.
+// ---------------------------------------------------------------------------
+
 export function resolveExecutionCommand(
   commandTemplate: string[],
   workspaceDir: string
@@ -57,225 +76,62 @@ export function resolveExecutionCommand(
   return { executable, args };
 }
 
-/**
- * Local child process spawning execution runner.
- */
-export class LocalCodeRunner implements CodeRunner {
-  async run(code: string, stdin: string, language: string): Promise<ExecutionResult> {
+// ---------------------------------------------------------------------------
+// SandboxUnavailableRunner — SAFE default runner for Phase 6/7.
+//
+// This runner does NOT execute any user-provided source code.
+// It returns a structured runner_unavailable response for every request.
+//
+// A real sandboxed runner (Docker/gVisor) will replace this in Phase 8.
+// This class intentionally has no child_process, fs, or exec imports.
+// ---------------------------------------------------------------------------
+
+export class SandboxUnavailableRunner implements CodeRunner {
+  async run(_code: string, _stdin: string, language: string): Promise<ExecutionResult> {
     const config = getLanguageConfig(language);
-    if (!config) {
-      return {
-        status: "error",
-        detectedLanguage: language,
-        stdout: "",
-        stderr: "",
-        exitCode: null,
-        timeMs: null,
-        message: `Unsupported language: ${language}`,
-      };
-    }
-
-    // Verify toolchain availability on host first
-    const toolchain = checkToolchainAvailability(language);
-    if (!toolchain.available) {
-      return {
-        status: "error",
-        detectedLanguage: config.language,
-        stdout: "",
-        stderr: `Execution environment unavailable. Missing executable: '${toolchain.executable}'`,
-        exitCode: null,
-        timeMs: null,
-        message: `Toolchain unavailable: ${config.displayName} compiler/interpreter is not configured on this host.`,
-      };
-    }
-
-    const mapping = getFileMapping(language, code);
-    const workspaceId = crypto.randomUUID();
-    const tempDir = path.join(process.cwd(), "temp");
-    const workspaceDir = path.join(tempDir, workspaceId);
-
-    // Create temporary workspace directories
-    await fs.promises.mkdir(workspaceDir, { recursive: true });
-
-    const sourceFilename = mapping.sourceFilename;
-    let outputFilename = mapping.outputFilename;
-
-    // Windows target binary extensions mapping
-    if (
-      process.platform === "win32" &&
-      config.compilationRequired &&
-      language.toLowerCase() !== "java"
-    ) {
-      outputFilename = `${outputFilename}.exe`;
-    }
-
-    const sourcePath = path.join(workspaceDir, sourceFilename);
-    await fs.promises.writeFile(sourcePath, code, "utf8");
-
-    try {
-      // 1. Compilation Step
-      let compilationOutput = "";
-      if (config.compilationRequired) {
-        // Compile template substitution
-        const compileArgs = config.compileCommandTemplate.map((arg) => {
-          return arg.replace("[source]", sourceFilename).replace("[output]", outputFilename);
-        });
-
-        const compileProcess = spawn(compileArgs[0], compileArgs.slice(1), {
-          cwd: workspaceDir,
-        });
-
-        let compileTimedOut = false;
-        const compileTimeoutTimer = setTimeout(() => {
-          compileTimedOut = true;
-          compileProcess.kill("SIGKILL");
-        }, 8000);
-
-        await new Promise<void>((resolve) => {
-          compileProcess.stdout?.on("data", (chunk) => {
-            compilationOutput += chunk.toString();
-          });
-          compileProcess.stderr?.on("data", (chunk) => {
-            compilationOutput += chunk.toString();
-          });
-          compileProcess.on("close", () => {
-            resolve();
-          });
-        });
-
-        clearTimeout(compileTimeoutTimer);
-
-        if (compileTimedOut) {
-          return {
-            status: "timeout",
-            detectedLanguage: config.language,
-            compilationStatus: 124,
-            compilationOutput: "Compilation timed out after 8 seconds.",
-            stdout: "",
-            stderr: "SIGTERM: Compilation terminated due to execution timeout.",
-            exitCode: 124,
-            timeMs: 8000,
-          };
-        }
-
-        // Clean up compiler file system paths
-        compilationOutput = sanitizeOutput(compilationOutput, workspaceDir, sourceFilename);
-
-        const compileExitCode = compileProcess.exitCode;
-        if (compileExitCode !== 0) {
-          return {
-            status: "compilation_error",
-            detectedLanguage: config.language,
-            compilationStatus: compileExitCode,
-            compilationOutput: compilationOutput,
-            stdout: "",
-            stderr: "Compilation failed.",
-            exitCode: compileExitCode,
-            timeMs: null,
-          };
-        }
-      }
-
-      // 2. Execution Step
-      const execTemplate = config.executionCommandTemplate.map((arg) => {
-        let resolved = arg.replace("[source]", sourceFilename).replace("[output]", outputFilename);
-        if (mapping.classname) {
-          resolved = resolved.replace("[classname]", mapping.classname);
-        }
-        return resolved;
-      });
-
-      const { executable, args } = resolveExecutionCommand(execTemplate, workspaceDir);
-
-      const runProcess = spawn(executable, args, {
-        cwd: workspaceDir,
-      });
-
-      let stdoutAccumulator = "";
-      let stderrAccumulator = "";
-      let executionTimedOut = false;
-
-      const runTimeoutTimer = setTimeout(() => {
-        executionTimedOut = true;
-        runProcess.kill("SIGKILL");
-      }, 5000);
-
-      // Async write stdin stream
-      if (stdin) {
-        runProcess.stdin?.write(stdin, "utf8");
-      }
-      runProcess.stdin?.end();
-
-      const startTime = performance.now();
-
-      await new Promise<void>((resolve) => {
-        runProcess.stdout?.on("data", (chunk) => {
-          stdoutAccumulator += chunk.toString();
-        });
-        runProcess.stderr?.on("data", (chunk) => {
-          stderrAccumulator += chunk.toString();
-        });
-        runProcess.on("close", () => {
-          resolve();
-        });
-      });
-
-      const timeMs = Math.round(performance.now() - startTime);
-      clearTimeout(runTimeoutTimer);
-
-      if (executionTimedOut) {
-        return {
-          status: "timeout",
-          detectedLanguage: config.language,
-          compilationOutput,
-          stdout: sanitizeOutput(stdoutAccumulator, workspaceDir, sourceFilename),
-          stderr: "SIGTERM: Process terminated because runtime execution exceeded 5 seconds.",
-          exitCode: 124,
-          timeMs: 5000,
-        };
-      }
-
-      const exitCode = runProcess.exitCode;
-      const status = exitCode === 0 ? "success" : "runtime_error";
-
-      return {
-        status,
-        detectedLanguage: config.language,
-        compilationOutput,
-        stdout: sanitizeOutput(stdoutAccumulator, workspaceDir, sourceFilename),
-        stderr: sanitizeOutput(stderrAccumulator, workspaceDir, sourceFilename),
-        exitCode,
-        timeMs,
-      };
-    } catch (err: unknown) {
-      const error = err as Error;
-      return {
-        status: "error",
-        detectedLanguage: config.language,
-        stdout: "",
-        stderr: `Internal Execution Error: ${error.message}`,
-        exitCode: 500,
-        timeMs: null,
-      };
-    } finally {
-      // Deterministic garbage cleanup of source files and executables
-      await fs.promises.rm(workspaceDir, { recursive: true, force: true }).catch(() => {});
-    }
+    return {
+      status: "runner_unavailable",
+      errorCode: "RUNNER_UNAVAILABLE",
+      detectedLanguage: config?.language ?? language,
+      stdout: "",
+      stderr: "",
+      exitCode: null,
+      timeMs: null,
+      message:
+        "The isolated execution environment is not yet available. " +
+        "Code execution requires a sandboxed runner (planned for Phase 8: Sandbox Isolation). " +
+        "No user code was executed on the host system.",
+    };
   }
 }
 
-/**
- * Mock runner adapter for testing constraints or simulating absences.
- */
+// ---------------------------------------------------------------------------
+// MockCodeRunner — test-only runner. NEVER executes real user code.
+//
+// Simulates success, compilation failure, runtime failure, timeout, and
+// runner_unavailable scenarios for automated tests. This class has no
+// child_process or fs imports and cannot execute code on the host.
+// ---------------------------------------------------------------------------
+
 export class MockCodeRunner implements CodeRunner {
   private mockFailures: Record<
     string,
-    "compilation_error" | "timeout" | "runtime_error" | "toolchain_unavailable"
+    | "compilation_error"
+    | "timeout"
+    | "runtime_error"
+    | "toolchain_unavailable"
+    | "runner_unavailable"
   > = {};
 
   setMockFailure(
     language: string,
-    type: "compilation_error" | "timeout" | "runtime_error" | "toolchain_unavailable" | null
+    type:
+      | "compilation_error"
+      | "timeout"
+      | "runtime_error"
+      | "toolchain_unavailable"
+      | "runner_unavailable"
+      | null
   ) {
     const key = language.toLowerCase().replace("++", "pp");
     if (type === null) {
@@ -285,11 +141,12 @@ export class MockCodeRunner implements CodeRunner {
     }
   }
 
-  async run(code: string, stdin: string, language: string): Promise<ExecutionResult> {
+  async run(_code: string, stdin: string, language: string): Promise<ExecutionResult> {
     const config = getLanguageConfig(language);
     if (!config) {
       return {
         status: "error",
+        errorCode: "UNSUPPORTED_LANGUAGE",
         detectedLanguage: language,
         stdout: "",
         stderr: "",
@@ -301,9 +158,24 @@ export class MockCodeRunner implements CodeRunner {
 
     const failureType = this.mockFailures[language.toLowerCase().replace("++", "pp")];
 
+    if (failureType === "runner_unavailable") {
+      return {
+        status: "runner_unavailable",
+        errorCode: "RUNNER_UNAVAILABLE",
+        detectedLanguage: config.language,
+        stdout: "",
+        stderr: "",
+        exitCode: null,
+        timeMs: null,
+        message:
+          "The isolated execution environment is not yet available. No user code was executed on the host system.",
+      };
+    }
+
     if (failureType === "toolchain_unavailable") {
       return {
         status: "error",
+        errorCode: "TOOLCHAIN_NOT_FOUND",
         detectedLanguage: config.language,
         stdout: "",
         stderr: "Execution environment unavailable. Missing executable: 'compiler'",
@@ -316,6 +188,7 @@ export class MockCodeRunner implements CodeRunner {
     if (failureType === "compilation_error") {
       return {
         status: "compilation_error",
+        errorCode: "COMPILATION_FAILED",
         detectedLanguage: config.language,
         compilationStatus: 1,
         compilationOutput: `src/main.${config.extension}:5:5: error: expected ';' before return`,
@@ -329,6 +202,7 @@ export class MockCodeRunner implements CodeRunner {
     if (failureType === "timeout") {
       return {
         status: "timeout",
+        errorCode: "EXECUTION_TIMEOUT",
         detectedLanguage: config.language,
         stdout: "",
         stderr: "SIGTERM: Process terminated because runtime execution exceeded 5 seconds.",
@@ -340,6 +214,7 @@ export class MockCodeRunner implements CodeRunner {
     if (failureType === "runtime_error") {
       return {
         status: "runtime_error",
+        errorCode: "RUNTIME_ERROR",
         detectedLanguage: config.language,
         stdout: "",
         stderr: "ZeroDivisionError: division by zero",
@@ -348,7 +223,7 @@ export class MockCodeRunner implements CodeRunner {
       };
     }
 
-    // Default mock success output based on language
+    // Default: simulated success. Uses config.displayName only — never executes code.
     let stdout = `Hello, World! (Simulated ${config.displayName} Run)\n`;
     if (stdin) {
       stdout += `Input received (stdin): "${stdin}"`;
@@ -356,6 +231,7 @@ export class MockCodeRunner implements CodeRunner {
 
     return {
       status: "success",
+      errorCode: undefined,
       detectedLanguage: config.language,
       stdout,
       stderr: "",

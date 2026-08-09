@@ -1,27 +1,40 @@
 import { Router, Request, Response } from "express";
 import { detectLanguage } from "../../../shared/detector.js";
 import { getLanguageConfig } from "../compiler/config.js";
-import { LocalCodeRunner, MockCodeRunner, CodeRunner } from "../compiler/runner.js";
+import { SandboxUnavailableRunner, MockCodeRunner, CodeRunner } from "../compiler/runner.js";
 
 const router = Router();
 
-// Configure the active execution runner (Mock in testing, Local in dev)
+// ---------------------------------------------------------------------------
+// Active runner selection.
+//
+// Production (NODE_ENV !== "test"):
+//   SandboxUnavailableRunner — returns a structured runner_unavailable response.
+//   No user code is executed on the host machine.
+//   A real sandboxed runner will replace this in Phase 8.
+//
+// Test (NODE_ENV === "test"):
+//   MockCodeRunner — simulates all result types without any host execution.
+// ---------------------------------------------------------------------------
 const useMock =
   process.env.NODE_ENV === "test" && process.env.ENABLE_LOCAL_HOST_EXECUTION !== "true";
-export const activeRunner: CodeRunner = useMock ? new MockCodeRunner() : new LocalCodeRunner();
 
-// Max limit bounds
-const MAX_CODE_BYTES = 64 * 1024; // 64KB
-const MAX_STDIN_BYTES = 16 * 1024; // 16KB
+export const activeRunner: CodeRunner = useMock
+  ? new MockCodeRunner()
+  : new SandboxUnavailableRunner();
+
+// Max payload bounds
+const MAX_CODE_BYTES = 64 * 1024; // 64 KB
+const MAX_STDIN_BYTES = 16 * 1024; // 16 KB
 
 router.post("/execute", async (req: Request, res: Response): Promise<void> => {
   const { code, stdin } = req.body;
 
-  // 1. Validate payload parameters exist and are strings
+  // 1. Validate payload types
   if (typeof code !== "string" || (stdin !== undefined && typeof stdin !== "string")) {
     res.status(400).json({
       error: "Bad Request",
-      message: "Payload parameters 'code' (string) is required, and 'stdin' (string) is optional.",
+      message: "Payload parameter 'code' (string) is required, and 'stdin' (string) is optional.",
     });
     return;
   }
@@ -46,6 +59,7 @@ router.post("/execute", async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
+  // 3. Reject empty code bodies
   if (!code.trim()) {
     res.status(400).json({
       error: "Bad Request",
@@ -54,10 +68,10 @@ router.post("/execute", async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  // 3. Authoritative language detection
+  // 4. Authoritative language detection (server-side — client cannot override)
   const detection = detectLanguage(code);
 
-  // 4. Verify language configuration
+  // 5. Verify language is supported
   const config = getLanguageConfig(detection.language);
   if (!config) {
     res.status(400).json({
@@ -67,11 +81,24 @@ router.post("/execute", async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  // 5. Delegate run command to the active runner (Mock or Local)
+  // 6. Delegate to the active runner through the CodeRunner abstraction.
+  //    The execution service never directly invokes host processes.
   try {
     const result = await activeRunner.run(code, stdin || "", detection.language);
 
-    if (result.status === "error" && result.stderr.includes("Execution environment unavailable")) {
+    // Runner unavailable — sandbox not yet implemented
+    if (result.status === "runner_unavailable") {
+      res.status(503).json({
+        error: "Service Unavailable",
+        code: "RUNNER_UNAVAILABLE",
+        language: config.displayName,
+        message: result.message,
+      });
+      return;
+    }
+
+    // Toolchain not found (mock or future sandbox pre-flight check)
+    if (result.status === "error" && result.errorCode === "TOOLCHAIN_NOT_FOUND") {
       res.status(400).json({
         code: "TOOLCHAIN_NOT_FOUND",
         language: config.displayName,

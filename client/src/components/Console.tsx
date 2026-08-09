@@ -7,6 +7,7 @@ interface ExecutionResult {
     | "runtime_error"
     | "resource_limit_exceeded"
     | "timeout"
+    | "runner_unavailable"
     | "error"
     | null;
   stdout: string;
@@ -14,6 +15,8 @@ interface ExecutionResult {
   exitCode: number | null;
   timeMs: number | null;
   compilationOutput?: string;
+  errorCode?: string;
+  message?: string;
 }
 
 interface ConsoleProps {
@@ -68,6 +71,18 @@ export default function Console({
               <span style={styles.badgeRose}>Timeout Limit Exceeded</span>
               <p style={styles.errorTitle}>
                 Your code exceeded the execution limit (5 seconds). Check for infinite loops.
+              </p>
+            </div>
+          );
+        }
+        if (result.status === "runner_unavailable") {
+          return (
+            <div style={styles.sandboxBanner}>
+              <span style={styles.badgeAmber}>⚙️ Sandbox Not Available</span>
+              <p style={styles.errorTitle}>The isolated execution environment is not yet active.</p>
+              <p style={styles.sandboxNote}>
+                Code execution requires a sandboxed runner (Phase 8: Sandbox Isolation). No code was
+                executed on the host system.
               </p>
             </div>
           );
@@ -390,6 +405,31 @@ const styles = {
     padding: "2px 6px",
     borderRadius: "4px",
     fontWeight: 600,
+  },
+  badgeAmber: {
+    fontSize: "0.7rem",
+    backgroundColor: "rgba(245, 158, 11, 0.1)",
+    border: "1px solid rgba(245, 158, 11, 0.25)",
+    color: "#f59e0b",
+    padding: "2px 8px",
+    borderRadius: "4px",
+    fontWeight: 600,
+  },
+  sandboxBanner: {
+    backgroundColor: "rgba(245, 158, 11, 0.04)",
+    border: "1px solid rgba(245, 158, 11, 0.15)",
+    padding: "14px",
+    borderRadius: "8px",
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "8px",
+    alignItems: "flex-start",
+  },
+  sandboxNote: {
+    color: "var(--text-muted)",
+    margin: 0,
+    fontSize: "0.82rem",
+    lineHeight: "1.5",
   },
   outputContainer: {
     height: "100%",
