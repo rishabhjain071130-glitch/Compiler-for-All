@@ -1,51 +1,124 @@
-import { useRef } from "react";
+import { useRef, useEffect, useState } from "react";
+import Editor, { Monaco, OnMount } from "@monaco-editor/react";
+import { useDebounce } from "../hooks/useDebounce.ts";
 
 interface EditorPaneProps {
   code: string;
   onChangeCode: (val: string) => void;
+  detectedLanguage: string;
 }
 
-export default function EditorPane({ code, onChangeCode }: EditorPaneProps) {
-  const lineNumbersRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+export default function EditorPane({ code, onChangeCode, detectedLanguage }: EditorPaneProps) {
+  const [localCode, setLocalCode] = useState<string>(code);
+  const debouncedLocalCode = useDebounce(localCode, 500);
+  const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const monacoRef = useRef<Monaco | null>(null);
 
-  // Synchronize line numbers scroll with textarea scroll
-  const handleScroll = () => {
-    if (lineNumbersRef.current && textareaRef.current) {
-      lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop;
+  // Sync parent updates (e.g., initial load, resets)
+  useEffect(() => {
+    if (code !== localCode) {
+      setLocalCode(code);
     }
+  }, [code]);
+
+  // Propagate debounced changes to the parent state
+  useEffect(() => {
+    onChangeCode(debouncedLocalCode);
+  }, [debouncedLocalCode]);
+
+  // Map visual status pill value to Monaco language IDs
+  const mapLanguage = (lang: string): string => {
+    const normalized = lang.toLowerCase();
+    if (normalized.includes("c++") || normalized.includes("cpp")) return "cpp";
+    if (normalized.includes("java")) return "java";
+    if (normalized.includes("python")) return "python";
+    if (normalized.includes("javascript") || normalized.includes("js")) return "javascript";
+    if (normalized === "c") return "c";
+    return "javascript"; // fallback
   };
 
-  // Generate line numbers array
-  const lines = code.split("\n");
-  const lineNumbers = Array.from({ length: Math.max(lines.length, 1) }, (_, i) => i + 1);
+  // Sync model language dynamically when detectedLanguage updates
+  useEffect(() => {
+    if (editorRef.current && monacoRef.current) {
+      const model = editorRef.current.getModel();
+      if (model) {
+        const langId = mapLanguage(detectedLanguage);
+        monacoRef.current.editor.setModelLanguage(model, langId);
+      }
+    }
+  }, [detectedLanguage]);
+
+  const handleEditorDidMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
+
+    // Define custom slate-dark/cyan editor theme matching glassmorphic panel variables
+    monaco.editor.defineTheme("compilerForAllTheme", {
+      base: "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "", foreground: "f1f5f9" },
+        { token: "comment", foreground: "64748b", fontStyle: "italic" },
+        { token: "keyword", foreground: "06b6d4", fontStyle: "bold" },
+        { token: "string", foreground: "10b981" },
+        { token: "number", foreground: "f59e0b" },
+      ],
+      colors: {
+        "editor.background": "#090d16",
+        "editor.foreground": "#f1f5f9",
+        "editorLineNumber.foreground": "#475569",
+        "editorLineNumber.activeForeground": "#06b6d4",
+        "editor.lineHighlightBackground": "#131b2e",
+        "editorCursor.foreground": "#06b6d4",
+        "editor.selectionBackground": "rgba(6, 182, 212, 0.15)",
+        "editor.inactiveSelectionBackground": "rgba(6, 182, 212, 0.08)",
+      },
+    });
+
+    monaco.editor.setTheme("compilerForAllTheme");
+  };
+
+  const handleEditorChange = (value: string | undefined) => {
+    if (value !== undefined) {
+      setLocalCode(value);
+    }
+  };
 
   return (
     <div style={styles.container} className="glass-panel">
       <div style={styles.header}>
         <span style={styles.title}>Source Editor</span>
-        <span style={styles.badge}>Speculative Highlight Active</span>
+        <span style={styles.badge}>Monaco Sandbox Active</span>
       </div>
 
       <div style={styles.editorBody}>
-        {/* Line Numbers Column */}
-        <div style={styles.lineNumbers} ref={lineNumbersRef}>
-          {lineNumbers.map((num) => (
-            <div key={num} style={styles.lineNumber}>
-              {num}
+        <Editor
+          height="100%"
+          language={mapLanguage(detectedLanguage)}
+          value={localCode}
+          onChange={handleEditorChange}
+          onMount={handleEditorDidMount}
+          loading={
+            <div style={styles.skeletonContainer}>
+              <div style={styles.skeletonPulse}>Loading Editor Sandbox...</div>
             </div>
-          ))}
-        </div>
-
-        {/* Text Area */}
-        <textarea
-          ref={textareaRef}
-          value={code}
-          onChange={(e) => onChangeCode(e.target.value)}
-          onScroll={handleScroll}
-          placeholder='// Start typing your code here...&#10;// No need to select a language! The compiler will detect it.&#10;&#10;#include <stdio.h>&#10;int main() {&#10;    printf("Hello, World!\\n");&#10;    return 0;&#10;}'
-          style={styles.textarea}
-          spellCheck={false}
+          }
+          options={{
+            minimap: { enabled: false },
+            wordWrap: "on",
+            fontSize: 14,
+            lineNumbers: "on",
+            automaticLayout: true,
+            tabSize: 4,
+            cursorBlinking: "smooth",
+            cursorSmoothCaretAnimation: "on",
+            padding: { top: 16, bottom: 16 },
+            fontFamily: "var(--font-mono)",
+            scrollbar: {
+              verticalScrollbarSize: 8,
+              horizontalScrollbarSize: 8,
+            },
+          }}
         />
       </div>
     </div>
@@ -86,46 +159,22 @@ const styles = {
     fontWeight: 500,
   },
   editorBody: {
-    display: "flex",
     flex: 1,
     overflow: "hidden",
-    position: "relative" as const,
-    backgroundColor: "var(--bg-textarea)",
+    backgroundColor: "#090d16",
   },
-  lineNumbers: {
-    width: "48px",
-    padding: "16px 0",
-    borderRight: "1px solid var(--border-color)",
+  skeletonContainer: {
     display: "flex",
-    flexDirection: "column" as const,
     alignItems: "center",
-    overflow: "hidden",
-    userSelect: "none" as const,
-    color: "var(--text-muted)",
-    fontFamily: "var(--font-mono)",
-    fontSize: "0.85rem",
-    lineHeight: "20px",
-    backgroundColor: "rgba(0, 0, 0, 0.05)",
-  },
-  lineNumber: {
-    height: "20px",
+    justifyContent: "center",
+    height: "100%",
     width: "100%",
-    textAlign: "right" as const,
-    paddingRight: "12px",
-  },
-  textarea: {
-    flex: 1,
-    border: "none",
-    outline: "none",
-    resize: "none" as const,
-    backgroundColor: "transparent",
-    color: "var(--text-main)",
-    fontFamily: "var(--font-mono)",
+    color: "var(--text-secondary)",
+    fontFamily: "var(--font-sans)",
     fontSize: "0.9rem",
-    lineHeight: "20px",
-    padding: "16px",
-    whiteSpace: "pre" as const,
-    overflow: "auto" as const,
-    tabSize: 4,
+    backgroundColor: "#090d16",
+  },
+  skeletonPulse: {
+    animation: "pulse-glow 1.5s infinite ease-in-out",
   },
 };

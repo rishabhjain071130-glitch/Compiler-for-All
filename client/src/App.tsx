@@ -224,7 +224,7 @@ export default function App() {
       }
     >
       {/* Left Pane: Code Editor container */}
-      <EditorPane code={code} onChangeCode={setCode} />
+      <EditorPane code={code} onChangeCode={setCode} detectedLanguage={detectedLanguage} />
 
       {/* Right Pane: Stdin and Tabbed Stdout Console */}
       <Console
