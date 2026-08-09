@@ -9,22 +9,28 @@ interface EditorPaneProps {
 }
 
 export default function EditorPane({ code, onChangeCode, detectedLanguage }: EditorPaneProps) {
-  const [localCode, setLocalCode] = useState<string>(code);
-  const debouncedLocalCode = useDebounce(localCode, 500);
+  const [localValue, setLocalValue] = useState<string>(code);
+  const debouncedValue = useDebounce(localValue, 500);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
 
   // Sync parent updates (e.g., initial load, resets)
   useEffect(() => {
-    if (code !== localCode) {
-      setLocalCode(code);
+    if (editorRef.current) {
+      const currentValue = editorRef.current.getValue();
+      if (code !== currentValue) {
+        editorRef.current.setValue(code);
+        setLocalValue(code);
+      }
     }
   }, [code]);
 
   // Propagate debounced changes to the parent state
   useEffect(() => {
-    onChangeCode(debouncedLocalCode);
-  }, [debouncedLocalCode]);
+    if (debouncedValue !== code) {
+      onChangeCode(debouncedValue);
+    }
+  }, [debouncedValue, onChangeCode, code]);
 
   // Map visual status pill value to Monaco language IDs
   const mapLanguage = (lang: string): string => {
@@ -80,7 +86,7 @@ export default function EditorPane({ code, onChangeCode, detectedLanguage }: Edi
 
   const handleEditorChange = (value: string | undefined) => {
     if (value !== undefined) {
-      setLocalCode(value);
+      setLocalValue(value);
     }
   };
 
@@ -95,7 +101,7 @@ export default function EditorPane({ code, onChangeCode, detectedLanguage }: Edi
         <Editor
           height="100%"
           language={mapLanguage(detectedLanguage)}
-          value={localCode}
+          defaultValue={code}
           onChange={handleEditorChange}
           onMount={handleEditorDidMount}
           loading={

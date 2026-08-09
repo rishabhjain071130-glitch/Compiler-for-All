@@ -32,6 +32,12 @@ This document tracks the active state and progress of the **Compiler for All** i
 
 ## 3. Active Work Logs
 
+### 2026-08-09 (UI and Monaco Refinements)
+
+- Imported `client/src/index.css` inside `client/src/main.tsx` to enable the dark glassmorphic styling system globally.
+- Refactored `EditorPane.tsx` Monaco sync: replaced state-driven controlled values with uncontrolled `defaultValue` bindings and ref-based value checks to eliminate cursor jumps and typed character deletions.
+- Separated source editor contents from console inputs, ensuring that source code is never treated as or leaked into `stdin` mock buffers.
+
 ### 2026-08-09 (Phase 4 Language Detection Completed)
 
 - Implemented a zero-dependency, modular, multi-signal language detection engine (`shared/detector.ts`).
