@@ -1,12 +1,18 @@
 interface ControlBarProps {
   detectedLanguage: string;
+  confidence: number;
   executing: boolean;
   onRun: () => void;
 }
 
-export default function ControlBar({ detectedLanguage, executing, onRun }: ControlBarProps) {
+export default function ControlBar({
+  detectedLanguage,
+  confidence,
+  executing,
+  onRun,
+}: ControlBarProps) {
   // Determine if a language has been detected (not in "detecting" state)
-  const isDetected = detectedLanguage.toLowerCase() !== "detecting...";
+  const isDetected = detectedLanguage.toLowerCase() !== "detecting..." && confidence > 0;
 
   return (
     <div style={styles.container} className="glass-panel">
@@ -25,7 +31,10 @@ export default function ControlBar({ detectedLanguage, executing, onRun }: Contr
             }}
           ></span>
           <span style={styles.pillLabel}>Language:</span>
-          <span style={styles.pillValue}>{detectedLanguage}</span>
+          <span style={styles.pillValue}>
+            {detectedLanguage}
+            {confidence > 0 ? ` (${Math.round(confidence * 100)}%)` : ""}
+          </span>
         </div>
         <span style={styles.helpText}>No dropdown needed—just start writing code.</span>
       </div>

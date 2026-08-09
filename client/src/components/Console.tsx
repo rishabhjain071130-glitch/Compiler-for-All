@@ -1,3 +1,5 @@
+import { DetectionResult } from "../../../shared/detector.ts";
+
 interface ExecutionResult {
   status:
     | "success"
@@ -19,6 +21,7 @@ interface ConsoleProps {
   onChangeTab: (tab: string) => void;
   result: ExecutionResult | null;
   executing: boolean;
+  detectionResult: DetectionResult;
 }
 
 export default function Console({
@@ -28,6 +31,7 @@ export default function Console({
   onChangeTab,
   result,
   executing,
+  detectionResult,
 }: ConsoleProps) {
   // Render active output stream
   const renderOutput = () => {
@@ -143,6 +147,32 @@ export default function Console({
             <div style={styles.metricRow}>
               <span style={styles.metricLabel}>Sandbox Runtime:</span>
               <span style={styles.metricValue}>gVisor Kernel Sandbox</span>
+            </div>
+
+            <div style={styles.metricSectionHeader}>Language Detection Metrics</div>
+            <div style={styles.metricRow}>
+              <span style={styles.metricLabel}>Speculated Target:</span>
+              <span style={styles.metricValue}>{detectionResult.language}</span>
+            </div>
+            <div style={styles.metricRow}>
+              <span style={styles.metricLabel}>Detection Confidence:</span>
+              <span style={styles.metricValue}>
+                {Math.round(detectionResult.confidence * 100)}%
+              </span>
+            </div>
+            <div style={styles.reasonsContainer}>
+              <span style={styles.metricLabel}>Engine Reasons / Signals:</span>
+              {detectionResult.reasons.length > 0 ? (
+                <ul style={styles.reasonsList}>
+                  {detectionResult.reasons.map((r, i) => (
+                    <li key={i} style={styles.reasonItem}>
+                      {r}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div style={styles.logTextMuted}>No signals matched. Defaulting logic active.</div>
+              )}
             </div>
           </div>
         );
@@ -387,5 +417,34 @@ const styles = {
   metricValueRed: {
     color: "var(--accent-rose)",
     fontWeight: 600,
+  },
+  metricSectionHeader: {
+    fontSize: "0.8rem",
+    fontWeight: 600,
+    color: "var(--accent-cyan)",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.05em",
+    borderBottom: "1px solid rgba(6, 182, 212, 0.15)",
+    paddingBottom: "4px",
+    marginBottom: "8px",
+    marginTop: "16px",
+  },
+  reasonsContainer: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "6px",
+    marginTop: "4px",
+  },
+  reasonsList: {
+    margin: 0,
+    paddingLeft: "16px",
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "4px",
+  },
+  reasonItem: {
+    fontSize: "0.8rem",
+    color: "var(--text-secondary)",
+    lineHeight: "1.4",
   },
 };

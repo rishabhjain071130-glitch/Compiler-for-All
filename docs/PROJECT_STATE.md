@@ -6,8 +6,8 @@ This document tracks the active state and progress of the **Compiler for All** i
 
 ## 1. Progress Summary
 
-- **Overall Completion**: `27%` (3 of 11 Phases Completed)
-- **Active Phase**: Phase 04: Multi-Signal Language Detection Engine
+- **Overall Completion**: `36%` (4 of 11 Phases Completed)
+- **Active Phase**: Phase 05: Compiler Engine Configuration Router
 - **Last Updated**: 2026-08-09
 
 ---
@@ -19,7 +19,7 @@ This document tracks the active state and progress of the **Compiler for All** i
 | **01** | Project Setup & Monorepo Scaffold         | **Completed** |   2026-08-09    | [01_PROJECT_SETUP.md](file:///d:/Github/Compiler-for-All/prompts/01_PROJECT_SETUP.md)           |
 | **02** | UI/UX Glassmorphic Foundation             | **Completed** |   2026-08-09    | [02_UI_UX.md](file:///d:/Github/Compiler-for-All/prompts/02_UI_UX.md)                           |
 | **03** | Monaco Code Editor Integration            | **Completed** |   2026-08-09    | [03_CODE_EDITOR.md](file:///d:/Github/Compiler-for-All/prompts/03_CODE_EDITOR.md)               |
-| **04** | Multi-Signal Language Detection Engine    |  **Planned**  |        -        | [04_LANGUAGE_DETECTION.md](file:///d:/Github/Compiler-for-All/prompts/04_LANGUAGE_DETECTION.md) |
+| **04** | Multi-Signal Language Detection Engine    | **Completed** |   2026-08-09    | [04_LANGUAGE_DETECTION.md](file:///d:/Github/Compiler-for-All/prompts/04_LANGUAGE_DETECTION.md) |
 | **05** | Compiler Engine Configuration Router      |  **Planned**  |        -        | [05_COMPILER_ENGINE.md](file:///d:/Github/Compiler-for-All/prompts/05_COMPILER_ENGINE.md)       |
 | **06** | Local Child Process Code Execution Layer  |  **Planned**  |        -        | [06_CODE_EXECUTION.md](file:///d:/Github/Compiler-for-All/prompts/06_CODE_EXECUTION.md)         |
 | **07** | Error Parsing & Friendly Formatting       |  **Planned**  |        -        | [07_ERROR_HANDLING.md](file:///d:/Github/Compiler-for-All/prompts/07_ERROR_HANDLING.md)         |
@@ -31,6 +31,21 @@ This document tracks the active state and progress of the **Compiler for All** i
 ---
 
 ## 3. Active Work Logs
+
+### 2026-08-09 (Phase 4 Language Detection Completed)
+
+- Implemented a zero-dependency, modular, multi-signal language detection engine (`shared/detector.ts`).
+- Programmed robust preprocessing to strip comments (single-line, block, Python hashes) and string literals (single/double quotes, template backticks) to ignore code-like keywords in text prints.
+- Added heuristic regex checks scoring strong/medium/weak signals for C, C++, Java, Python, and JavaScript.
+- Added tie-breakers: Python score is cut by half if statement-ending semicolons (`;`) exist; C, C++, Java, and JavaScript scores are cut by 80% if curly braces (`{}`) are absent.
+- Set up scaling checks to reduce confidence values for short code inputs.
+- Created Vitest test suites (`shared/detector.test.ts`) covering 12 test assertions (HelloWorlds, Fibonacci arrays, C vs C++ includes, ties, comments-only, and edge-case inputs) with 100% success.
+- Mounted the engine directly into the Vite React client lifecycle:
+  - Monaco updates language models on the fly when the speculative engine results swap.
+  - Rendered explainable matching reasons and confidence scores inside the Console's Metrics panel.
+  - Displayed confidence indicators inside the bottom action pill (`ControlBar.tsx`).
+- Verified production builds transpile cleanly, and linter/formatting rule audits return zero errors/warnings.
+- **Note on Playwright Limitation**: Automated browser testing and screenshot rendering remained blocked by the Playwright driver 404 download issue on remote CDN mirrors.
 
 ### 2026-08-09 (Phase 3 Monaco Code Editor Completed)
 

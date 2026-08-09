@@ -3,6 +3,7 @@ import Layout from "./components/Layout.tsx";
 import EditorPane from "./components/EditorPane.tsx";
 import Console from "./components/Console.tsx";
 import ControlBar from "./components/ControlBar.tsx";
+import { detectLanguage, DetectionResult } from "../../shared/detector.ts";
 
 interface ExecutionResult {
   status:
@@ -29,80 +30,20 @@ export default function App() {
   const [code, setCode] = useState<string>(DEFAULT_CODE);
   const [stdin, setStdin] = useState<string>("");
   const [activeTab, setActiveTab] = useState<string>("output");
-  const [detectedLanguage, setDetectedLanguage] = useState<string>("C");
+  const [detectionResult, setDetectionResult] = useState<DetectionResult>({
+    language: "C",
+    confidence: 1.0,
+    reasons: ["Initial template default"],
+  });
   const [executing, setExecuting] = useState<boolean>(false);
   const [result, setResult] = useState<ExecutionResult | null>(null);
 
-  // Client-side speculative language auto-detection
+  const detectedLanguage = detectionResult.language;
+
+  // Authoritative multi-signal language auto-detection
   useEffect(() => {
-    const cleanCode = code.trim();
-    if (!cleanCode) {
-      setDetectedLanguage("Detecting...");
-      return;
-    }
-
-    // Stripped comment representation (simple check)
-    const normalized = cleanCode
-      .replace(/\/\/.*$/gm, "") // Strip single line comments
-      .replace(/\/\*[\s\S]*?\*\//g, "") // Strip multi line comments
-      .replace(/#.*$/gm, ""); // Strip python/c preprocessor comments (coarse)
-
-    // Check for C++ strong markers
-    if (
-      cleanCode.includes("#include <iostream>") ||
-      normalized.includes("std::cout") ||
-      normalized.includes("using namespace std") ||
-      normalized.includes("std::vector")
-    ) {
-      setDetectedLanguage("C++");
-      return;
-    }
-
-    // Check for C preprocessor markers
-    if (
-      cleanCode.includes("#include") ||
-      normalized.includes("printf") ||
-      normalized.includes("scanf")
-    ) {
-      setDetectedLanguage("C");
-      return;
-    }
-
-    // Check for Java class markers
-    if (
-      normalized.includes("public class") ||
-      normalized.includes("System.out.print") ||
-      normalized.includes("public static void main")
-    ) {
-      setDetectedLanguage("Java");
-      return;
-    }
-
-    // Check for JavaScript markers
-    if (
-      normalized.includes("console.log") ||
-      normalized.includes("let ") ||
-      normalized.includes("var ") ||
-      normalized.includes("require(") ||
-      normalized.includes("module.exports")
-    ) {
-      setDetectedLanguage("JavaScript");
-      return;
-    }
-
-    // Check for Python markers
-    if (
-      normalized.includes("def ") ||
-      normalized.includes("import ") ||
-      normalized.includes("print(") ||
-      normalized.includes("elif ") ||
-      normalized.includes("if __name__ ==")
-    ) {
-      setDetectedLanguage("Python");
-      return;
-    }
-
-    setDetectedLanguage("Detecting...");
+    const res = detectLanguage(code);
+    setDetectionResult(res);
   }, [code]);
 
   // Simulated code execution run
@@ -220,7 +161,12 @@ export default function App() {
   return (
     <Layout
       controlBar={
-        <ControlBar detectedLanguage={detectedLanguage} executing={executing} onRun={handleRun} />
+        <ControlBar
+          detectedLanguage={detectedLanguage}
+          confidence={detectionResult.confidence}
+          executing={executing}
+          onRun={handleRun}
+        />
       }
     >
       {/* Left Pane: Code Editor container */}
@@ -234,6 +180,7 @@ export default function App() {
         onChangeTab={setActiveTab}
         result={result}
         executing={executing}
+        detectionResult={detectionResult}
       />
     </Layout>
   );
