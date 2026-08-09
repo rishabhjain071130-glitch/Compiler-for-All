@@ -1,15 +1,20 @@
 import { Router, Request, Response } from "express";
 import { detectLanguage } from "../../../shared/detector.js";
-import { getLanguageConfig, checkToolchainAvailability } from "../compiler/config.js";
-import { generateCommands } from "../compiler/parser.js";
+import { getLanguageConfig } from "../compiler/config.js";
+import { LocalCodeRunner, MockCodeRunner, CodeRunner } from "../compiler/runner.js";
 
 const router = Router();
+
+// Configure the active execution runner (Mock in testing, Local in dev)
+const useMock =
+  process.env.NODE_ENV === "test" && process.env.ENABLE_LOCAL_HOST_EXECUTION !== "true";
+export const activeRunner: CodeRunner = useMock ? new MockCodeRunner() : new LocalCodeRunner();
 
 // Max limit bounds
 const MAX_CODE_BYTES = 64 * 1024; // 64KB
 const MAX_STDIN_BYTES = 16 * 1024; // 16KB
 
-router.post("/execute", (req: Request, res: Response): void => {
+router.post("/execute", async (req: Request, res: Response): Promise<void> => {
   const { code, stdin } = req.body;
 
   // 1. Validate payload parameters exist and are strings
@@ -62,32 +67,25 @@ router.post("/execute", (req: Request, res: Response): void => {
     return;
   }
 
-  // 5. Verify toolchain availability
-  const toolchain = checkToolchainAvailability(detection.language);
-  if (!toolchain.available) {
-    res.status(400).json({
-      code: "TOOLCHAIN_NOT_FOUND",
-      language: config.displayName,
-      message: `${config.displayName} compiler/interpreter is not available on this system. Missing executable: '${toolchain.executable}'`,
-    });
-    return;
-  }
-
-  // 6. Generate compiler command mapping parameters
+  // 5. Delegate run command to the active runner (Mock or Local)
   try {
-    const commands = generateCommands(detection.language, code);
+    const result = await activeRunner.run(code, stdin || "", detection.language);
 
-    res.json({
-      detectedLanguage: commands.config.language,
-      compilationCommand: commands.compilationCommand,
-      executionCommand: commands.executionCommand,
-      sourceFilename: commands.sourceFilename,
-    });
+    if (result.status === "error" && result.stderr.includes("Execution environment unavailable")) {
+      res.status(400).json({
+        code: "TOOLCHAIN_NOT_FOUND",
+        language: config.displayName,
+        message: `${config.displayName} compiler/interpreter is not available on this system.`,
+      });
+      return;
+    }
+
+    res.json(result);
   } catch (error: unknown) {
     const err = error as Error;
     res.status(500).json({
       error: "Internal Server Error",
-      message: err.message || "Failed to generate compiler instructions.",
+      message: err.message || "Failed to execute compile or runtime instructions.",
     });
   }
 });

@@ -12,11 +12,13 @@ interface ExecutionResult {
     | "runtime_error"
     | "resource_limit_exceeded"
     | "timeout"
+    | "error"
     | null;
   stdout: string;
   stderr: string;
   exitCode: number | null;
   timeMs: number | null;
+  compilationOutput?: string;
 }
 
 const DEFAULT_CODE = `#include <stdio.h>
@@ -46,116 +48,83 @@ export default function App() {
     setDetectionResult(res);
   }, [code]);
 
-  // Simulated code execution run
-  const handleRun = () => {
+  // Real code execution run
+  const handleRun = async () => {
     setExecuting(true);
     setResult(null);
 
-    // Simulated 1.5s compile/sandbox execution lag
-    setTimeout(() => {
-      const lowerCode = code.toLowerCase();
-      let mockResult: ExecutionResult;
+    try {
+      const response = await fetch("/api/execute", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          code,
+          stdin,
+        }),
+      });
 
-      // 1. Simulate compile errors if user explicitly typed invalid keywords
-      if (lowerCode.includes("syntax error") || lowerCode.includes("missing semicolon")) {
-        mockResult = {
-          status: "compilation_error",
-          stdout: "",
-          stderr:
-            "main.cpp: In function 'int main()':\nmain.cpp:5:5: error: expected ';' before 'return'",
-          exitCode: 1,
-          timeMs: 140,
-        };
+      if (response.status === 400) {
+        const errData = await response.json();
+        if (errData.code === "TOOLCHAIN_NOT_FOUND") {
+          setResult({
+            status: "error",
+            stdout: "",
+            stderr: "Execution environment unavailable",
+            exitCode: null,
+            timeMs: null,
+            compilationOutput: errData.message,
+          });
+          setActiveTab("compiler");
+          setExecuting(false);
+          return;
+        } else {
+          setResult({
+            status: "error",
+            stdout: "",
+            stderr: errData.message || errData.error || "Bad Request",
+            exitCode: null,
+            timeMs: null,
+          });
+          setActiveTab("output");
+          setExecuting(false);
+          return;
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(`Server returned status ${response.status}`);
+      }
+
+      const resData = await response.json();
+      setResult({
+        status: resData.status,
+        stdout: resData.stdout,
+        stderr: resData.stderr,
+        exitCode: resData.exitCode,
+        timeMs: resData.timeMs,
+        compilationOutput: resData.compilationOutput,
+      });
+
+      if (resData.status === "compilation_error") {
         setActiveTab("compiler");
-      }
-      // 2. Simulate infinite loop timeouts
-      else if (lowerCode.includes("while (true)") || lowerCode.includes("while true:")) {
-        mockResult = {
-          status: "timeout",
-          stdout: "",
-          stderr: "SIGTERM: Process terminated because runtime execution exceeded 5 seconds.",
-          exitCode: 124,
-          timeMs: 5000,
-        };
+      } else {
         setActiveTab("output");
       }
-      // 3. Simulate resource limit leaks
-      else if (lowerCode.includes("out of memory") || lowerCode.includes("leak")) {
-        mockResult = {
-          status: "resource_limit_exceeded",
-          stdout: "",
-          stderr: "SIGKILL: Process terminated. Memory usage limit of 64MB was exceeded.",
-          exitCode: 137,
-          timeMs: 380,
-        };
-        setActiveTab("output");
-      }
-      // 4. Simulate runtime errors
-      else if (
-        lowerCode.includes("throw") ||
-        lowerCode.includes("exception") ||
-        lowerCode.includes("/ 0")
-      ) {
-        mockResult = {
-          status: "runtime_error",
-          stdout: "",
-          stderr: lowerCode.includes("/ 0")
-            ? "ArithmeticError: division by zero"
-            : "RuntimeException: Uncaught exception triggered by main thread execution.",
-          exitCode: 1,
-          timeMs: 45,
-        };
-        setActiveTab("output");
-      }
-      // 5. Successful Execution mock based on detected language
-      else {
-        let executionOutput = "";
-        let runTime = 20;
-
-        switch (detectedLanguage) {
-          case "C":
-            executionOutput = "Hello, World! (Simulated C Execution)\n";
-            runTime = 35;
-            break;
-          case "C++":
-            executionOutput = "Hello, World! (Simulated C++ Execution)\n";
-            runTime = 42;
-            break;
-          case "Java":
-            executionOutput = "Hello, World! (Simulated Java Execution)\n";
-            runTime = 65;
-            break;
-          case "Python":
-            executionOutput = "Hello, World! (Simulated Python Execution)\n";
-            runTime = 12;
-            break;
-          case "JavaScript":
-            executionOutput = "Hello, World! (Simulated Node.js Execution)\n";
-            runTime = 22;
-            break;
-          default:
-            executionOutput = "Hello, World! (Simulated Default Execution)\n";
-            runTime = 15;
-        }
-
-        // Add stdin content if provided
-        if (stdin.trim()) {
-          executionOutput += `\nInput received (stdin): "${stdin}"`;
-        }
-
-        mockResult = {
-          status: "success",
-          stdout: executionOutput,
-          stderr: "",
-          exitCode: 0,
-          timeMs: runTime,
-        };
-        setActiveTab("output");
-      }
-
-      setResult(mockResult);
+    } catch (err: unknown) {
+      const error = err as Error;
+      setResult({
+        status: "error",
+        stdout: "",
+        stderr: error.message || "Failed to contact host compilation engine.",
+        exitCode: null,
+        timeMs: null,
+      });
+      setActiveTab("output");
+    } finally {
       setExecuting(false);
-    }, 1500);
+    }
   };
 
   return (

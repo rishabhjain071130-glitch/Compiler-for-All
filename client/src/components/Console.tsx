@@ -7,11 +7,13 @@ interface ExecutionResult {
     | "runtime_error"
     | "resource_limit_exceeded"
     | "timeout"
+    | "error"
     | null;
   stdout: string;
   stderr: string;
   exitCode: number | null;
   timeMs: number | null;
+  compilationOutput?: string;
 }
 
 interface ConsoleProps {
@@ -102,18 +104,19 @@ export default function Console({
           </div>
         );
 
-      case "compiler":
+      case "compiler": {
+        const compText =
+          result.compilationOutput || (result.status === "compilation_error" ? result.stderr : "");
         return (
           <div style={styles.outputContainer}>
-            {result.stderr ? (
-              <pre style={result.status === "success" ? styles.warningOutput : styles.errorOutput}>
-                {result.stderr}
-              </pre>
+            {compText ? (
+              <pre style={styles.errorOutput}>{compText}</pre>
             ) : (
               <div style={styles.logTextMuted}>No compiler errors or warnings logged.</div>
             )}
           </div>
         );
+      }
 
       case "metrics":
         return (

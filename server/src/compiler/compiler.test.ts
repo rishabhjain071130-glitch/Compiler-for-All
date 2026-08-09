@@ -8,7 +8,22 @@ import {
   setMockUnavailableToolchains,
 } from "./config.js";
 import { extractJavaClassName, getFileMapping, generateCommands } from "./parser.js";
-import executeRouter from "../routes/execute.js";
+import executeRouter, { activeRunner } from "../routes/execute.js";
+import { MockCodeRunner, sanitizeOutput, resolveExecutionCommand } from "./runner.js";
+
+interface TestResponse {
+  status?: string;
+  detectedLanguage?: string;
+  compilationCommand?: string[] | null;
+  executionCommand?: string[];
+  sourceFilename?: string;
+  stdout?: string;
+  stderr?: string;
+  code?: string;
+  language?: string;
+  error?: string;
+  compilationOutput?: string;
+}
 
 describe("Compiler Engine Configuration Registry", () => {
   it("resolves configs case-insensitively", () => {
@@ -109,6 +124,26 @@ describe("File Mapper and Command Generators", () => {
   });
 });
 
+describe("Path Sanitization and Command Resolution Safety", () => {
+  it("strips absolute path names from compiler console stdout/stderr", () => {
+    const rawOut =
+      "D:\\workspace\\Compiler-for-All\\server\\temp\\uuid\\main.cpp:5:1: error: missing semicolon";
+    const cleanOut = sanitizeOutput(
+      rawOut,
+      "D:\\workspace\\Compiler-for-All\\server\\temp\\uuid",
+      "main.cpp"
+    );
+    expect(cleanOut).toBe("main.cpp:5:1: error: missing semicolon");
+  });
+
+  it("resolves execution commands into absolute targets inside workspace directory", () => {
+    const template = ["./main", "arg1"];
+    const resolved = resolveExecutionCommand(template, "D:\\temp\\workspace");
+    expect(resolved.executable).toContain("D:\\temp\\workspace\\main");
+    expect(resolved.args).toEqual(["arg1"]);
+  });
+});
+
 describe("Execution Route Integration (POST /api/execute)", () => {
   let app: Express;
   let server: Server;
@@ -127,10 +162,16 @@ describe("Execution Route Integration (POST /api/execute)", () => {
 
   afterEach(() => {
     server.close();
-    setMockUnavailableToolchains([]);
+    if (activeRunner instanceof MockCodeRunner) {
+      activeRunner.setMockFailure("c", null);
+      activeRunner.setMockFailure("cpp", null);
+      activeRunner.setMockFailure("java", null);
+      activeRunner.setMockFailure("python", null);
+      activeRunner.setMockFailure("javascript", null);
+    }
   });
 
-  it("handles valid C++ compile and execution requests", async () => {
+  it("returns status 200 and success response for valid C++ requests", async () => {
     const response = await fetch(`http://localhost:${port}/api/execute`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -140,43 +181,13 @@ describe("Execution Route Integration (POST /api/execute)", () => {
     });
 
     expect(response.status).toBe(200);
-    const data = (await response.json()) as any;
+    const data = (await response.json()) as TestResponse;
+    expect(data.status).toBe("success");
     expect(data.detectedLanguage).toBe("cpp");
-    expect(data.compilationCommand).toContain("g++");
-    expect(data.executionCommand).toContain("./main");
+    expect(data.stdout).toContain("Simulated C++ Run");
   });
 
-  it("handles Java class mapping parameters", async () => {
-    const response = await fetch(`http://localhost:${port}/api/execute`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code: "public class BinarySearchTree { public static void main(String[] args) {} }",
-      }),
-    });
-
-    expect(response.status).toBe(200);
-    const data = (await response.json()) as any;
-    expect(data.detectedLanguage).toBe("java");
-    expect(data.sourceFilename).toBe("BinarySearchTree.java");
-    expect(data.compilationCommand).toEqual(["javac", "BinarySearchTree.java"]);
-    expect(data.executionCommand).toEqual(["java", "BinarySearchTree"]);
-  });
-
-  it("rejects empty code buffers", async () => {
-    const response = await fetch(`http://localhost:${port}/api/execute`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: "" }),
-    });
-
-    expect(response.status).toBe(400);
-    const data = (await response.json()) as any;
-    expect(data.error).toBe("Bad Request");
-  });
-
-  it("returns TOOLCHAIN_NOT_FOUND if compiler is mock missing", async () => {
-    setMockUnavailableToolchains(["javac"]);
+  it("returns status 200 and success response for Java execution requests", async () => {
     const response = await fetch(`http://localhost:${port}/api/execute`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -185,8 +196,155 @@ describe("Execution Route Integration (POST /api/execute)", () => {
       }),
     });
 
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as TestResponse;
+    expect(data.status).toBe("success");
+    expect(data.detectedLanguage).toBe("java");
+  });
+
+  it("returns status 200 and success response for JavaScript execution requests", async () => {
+    const response = await fetch(`http://localhost:${port}/api/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: "console.log('test');",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as TestResponse;
+    expect(data.status).toBe("success");
+    expect(data.detectedLanguage).toBe("javascript");
+  });
+
+  it("returns status 200 and success response for Python execution requests", async () => {
+    const response = await fetch(`http://localhost:${port}/api/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: "print('hello')",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as TestResponse;
+    expect(data.status).toBe("success");
+    expect(data.detectedLanguage).toBe("python");
+  });
+
+  it("rejects empty code requests with HTTP 400", async () => {
+    const response = await fetch(`http://localhost:${port}/api/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: "   " }),
+    });
+
     expect(response.status).toBe(400);
-    const data = (await response.json()) as any;
+    const data = (await response.json()) as TestResponse;
+    expect(data.error).toBe("Bad Request");
+  });
+
+  it("rejects code payloads exceeding 64KB with HTTP 400", async () => {
+    const oversizedCode = "a".repeat(65 * 1024);
+    const response = await fetch(`http://localhost:${port}/api/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: oversizedCode }),
+    });
+
+    expect(response.status).toBe(400);
+    const data = (await response.json()) as TestResponse;
+    expect(data.error).toBe("Payload Too Large");
+  });
+
+  it("rejects stdin payloads exceeding 16KB with HTTP 400", async () => {
+    const oversizedStdin = "b".repeat(17 * 1024);
+    const response = await fetch(`http://localhost:${port}/api/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: "print('hello')",
+        stdin: oversizedStdin,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    const data = (await response.json()) as TestResponse;
+    expect(data.error).toBe("Payload Too Large");
+  });
+
+  it("returns compilation_error when compilation fails", async () => {
+    if (activeRunner instanceof MockCodeRunner) {
+      activeRunner.setMockFailure("cpp", "compilation_error");
+    }
+
+    const response = await fetch(`http://localhost:${port}/api/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: "#include <iostream>\nint main() { std::cout << 5 }", // missing semicolon
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as TestResponse;
+    expect(data.status).toBe("compilation_error");
+    expect(data.compilationOutput).toContain("error: expected ';'");
+  });
+
+  it("returns timeout when process exceeds execution limit", async () => {
+    if (activeRunner instanceof MockCodeRunner) {
+      activeRunner.setMockFailure("python", "timeout");
+    }
+
+    const response = await fetch(`http://localhost:${port}/api/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: "while True: pass",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as TestResponse;
+    expect(data.status).toBe("timeout");
+    expect(data.stderr).toContain("execution exceeded 5 seconds");
+  });
+
+  it("returns runtime_error when script throws divisions by zero", async () => {
+    if (activeRunner instanceof MockCodeRunner) {
+      activeRunner.setMockFailure("python", "runtime_error");
+    }
+
+    const response = await fetch(`http://localhost:${port}/api/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: "print(1/0)",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as TestResponse;
+    expect(data.status).toBe("runtime_error");
+    expect(data.stderr).toContain("division by zero");
+  });
+
+  it("returns TOOLCHAIN_NOT_FOUND when runner toolchain is missing", async () => {
+    if (activeRunner instanceof MockCodeRunner) {
+      activeRunner.setMockFailure("java", "toolchain_unavailable");
+    }
+
+    const response = await fetch(`http://localhost:${port}/api/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: "public class BinarySearchTree { public static void main(String[] args) {} }",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    const data = (await response.json()) as TestResponse;
     expect(data.code).toBe("TOOLCHAIN_NOT_FOUND");
     expect(data.language).toBe("Java");
   });
