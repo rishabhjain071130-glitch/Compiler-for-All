@@ -1,178 +1,240 @@
 import { useState, useEffect } from "react";
+import Layout from "./components/Layout.tsx";
+import EditorPane from "./components/EditorPane.tsx";
+import Console from "./components/Console.tsx";
+import ControlBar from "./components/ControlBar.tsx";
 
-interface HealthStatus {
-  status: string;
-  timestamp: string;
+interface ExecutionResult {
+  status:
+    | "success"
+    | "compilation_error"
+    | "runtime_error"
+    | "resource_limit_exceeded"
+    | "timeout"
+    | null;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  timeMs: number | null;
 }
+
+const DEFAULT_CODE = `#include <stdio.h>
+
+int main() {
+    printf("Hello, World!\\n");
+    return 0;
+}`;
 
 export default function App() {
-  const [health, setHealth] = useState<HealthStatus | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const [code, setCode] = useState<string>(DEFAULT_CODE);
+  const [stdin, setStdin] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<string>("output");
+  const [detectedLanguage, setDetectedLanguage] = useState<string>("C");
+  const [executing, setExecuting] = useState<boolean>(false);
+  const [result, setResult] = useState<ExecutionResult | null>(null);
 
-  const fetchHealth = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/health");
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-      const data: HealthStatus = await res.json();
-      setHealth(data);
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError(String(err));
-      }
-    } finally {
-      setLoading(false);
+  // Client-side speculative language auto-detection
+  useEffect(() => {
+    const cleanCode = code.trim();
+    if (!cleanCode) {
+      setDetectedLanguage("Detecting...");
+      return;
     }
+
+    // Stripped comment representation (simple check)
+    const normalized = cleanCode
+      .replace(/\/\/.*$/gm, "") // Strip single line comments
+      .replace(/\/\*[\s\S]*?\*\//g, "") // Strip multi line comments
+      .replace(/#.*$/gm, ""); // Strip python/c preprocessor comments (coarse)
+
+    // Check for C++ strong markers
+    if (
+      cleanCode.includes("#include <iostream>") ||
+      normalized.includes("std::cout") ||
+      normalized.includes("using namespace std") ||
+      normalized.includes("std::vector")
+    ) {
+      setDetectedLanguage("C++");
+      return;
+    }
+
+    // Check for C preprocessor markers
+    if (
+      cleanCode.includes("#include") ||
+      normalized.includes("printf") ||
+      normalized.includes("scanf")
+    ) {
+      setDetectedLanguage("C");
+      return;
+    }
+
+    // Check for Java class markers
+    if (
+      normalized.includes("public class") ||
+      normalized.includes("System.out.print") ||
+      normalized.includes("public static void main")
+    ) {
+      setDetectedLanguage("Java");
+      return;
+    }
+
+    // Check for JavaScript markers
+    if (
+      normalized.includes("console.log") ||
+      normalized.includes("let ") ||
+      normalized.includes("var ") ||
+      normalized.includes("require(") ||
+      normalized.includes("module.exports")
+    ) {
+      setDetectedLanguage("JavaScript");
+      return;
+    }
+
+    // Check for Python markers
+    if (
+      normalized.includes("def ") ||
+      normalized.includes("import ") ||
+      normalized.includes("print(") ||
+      normalized.includes("elif ") ||
+      normalized.includes("if __name__ ==")
+    ) {
+      setDetectedLanguage("Python");
+      return;
+    }
+
+    setDetectedLanguage("Detecting...");
+  }, [code]);
+
+  // Simulated code execution run
+  const handleRun = () => {
+    setExecuting(true);
+    setResult(null);
+
+    // Simulated 1.5s compile/sandbox execution lag
+    setTimeout(() => {
+      const lowerCode = code.toLowerCase();
+      let mockResult: ExecutionResult;
+
+      // 1. Simulate compile errors if user explicitly typed invalid keywords
+      if (lowerCode.includes("syntax error") || lowerCode.includes("missing semicolon")) {
+        mockResult = {
+          status: "compilation_error",
+          stdout: "",
+          stderr:
+            "main.cpp: In function 'int main()':\nmain.cpp:5:5: error: expected ';' before 'return'",
+          exitCode: 1,
+          timeMs: 140,
+        };
+        setActiveTab("compiler");
+      }
+      // 2. Simulate infinite loop timeouts
+      else if (lowerCode.includes("while (true)") || lowerCode.includes("while true:")) {
+        mockResult = {
+          status: "timeout",
+          stdout: "",
+          stderr: "SIGTERM: Process terminated because runtime execution exceeded 5 seconds.",
+          exitCode: 124,
+          timeMs: 5000,
+        };
+        setActiveTab("output");
+      }
+      // 3. Simulate resource limit leaks
+      else if (lowerCode.includes("out of memory") || lowerCode.includes("leak")) {
+        mockResult = {
+          status: "resource_limit_exceeded",
+          stdout: "",
+          stderr: "SIGKILL: Process terminated. Memory usage limit of 64MB was exceeded.",
+          exitCode: 137,
+          timeMs: 380,
+        };
+        setActiveTab("output");
+      }
+      // 4. Simulate runtime errors
+      else if (
+        lowerCode.includes("throw") ||
+        lowerCode.includes("exception") ||
+        lowerCode.includes("/ 0")
+      ) {
+        mockResult = {
+          status: "runtime_error",
+          stdout: "",
+          stderr: lowerCode.includes("/ 0")
+            ? "ArithmeticError: division by zero"
+            : "RuntimeException: Uncaught exception triggered by main thread execution.",
+          exitCode: 1,
+          timeMs: 45,
+        };
+        setActiveTab("output");
+      }
+      // 5. Successful Execution mock based on detected language
+      else {
+        let executionOutput = "";
+        let runTime = 20;
+
+        switch (detectedLanguage) {
+          case "C":
+            executionOutput = "Hello, World! (Simulated C Execution)\n";
+            runTime = 35;
+            break;
+          case "C++":
+            executionOutput = "Hello, World! (Simulated C++ Execution)\n";
+            runTime = 42;
+            break;
+          case "Java":
+            executionOutput = "Hello, World! (Simulated Java Execution)\n";
+            runTime = 65;
+            break;
+          case "Python":
+            executionOutput = "Hello, World! (Simulated Python Execution)\n";
+            runTime = 12;
+            break;
+          case "JavaScript":
+            executionOutput = "Hello, World! (Simulated Node.js Execution)\n";
+            runTime = 22;
+            break;
+          default:
+            executionOutput = "Hello, World! (Simulated Default Execution)\n";
+            runTime = 15;
+        }
+
+        // Add stdin content if provided
+        if (stdin.trim()) {
+          executionOutput += `\nInput received (stdin): "${stdin}"`;
+        }
+
+        mockResult = {
+          status: "success",
+          stdout: executionOutput,
+          stderr: "",
+          exitCode: 0,
+          timeMs: runTime,
+        };
+        setActiveTab("output");
+      }
+
+      setResult(mockResult);
+      setExecuting(false);
+    }, 1500);
   };
 
-  useEffect(() => {
-    fetchHealth();
-  }, []);
-
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
-        <h1 style={styles.title}>Compiler for All</h1>
-        <p style={styles.subtitle}>Phase 1: Project Setup & Foundation</p>
-      </header>
-      <main style={styles.card}>
-        <h2 style={styles.cardTitle}>Backend Status Connection</h2>
-        {loading && <p style={styles.status}>Checking connection...</p>}
-        {error && (
-          <div style={styles.errorContainer}>
-            <p style={styles.errorText}>Connection Error: {error}</p>
-            <button onClick={fetchHealth} style={styles.button}>
-              Retry Connection
-            </button>
-          </div>
-        )}
-        {health && (
-          <div style={styles.successContainer}>
-            <div style={styles.statusIndicator}>
-              <span style={styles.dot}></span>
-              <p style={styles.statusText}>Backend Connected Successfully</p>
-            </div>
-            <pre style={styles.rawOutput}>{JSON.stringify(health, null, 2)}</pre>
-            <button onClick={fetchHealth} style={styles.button}>
-              Refresh Status
-            </button>
-          </div>
-        )}
-      </main>
-    </div>
+    <Layout
+      controlBar={
+        <ControlBar detectedLanguage={detectedLanguage} executing={executing} onRun={handleRun} />
+      }
+    >
+      {/* Left Pane: Code Editor container */}
+      <EditorPane code={code} onChangeCode={setCode} />
+
+      {/* Right Pane: Stdin and Tabbed Stdout Console */}
+      <Console
+        stdin={stdin}
+        onChangeStdin={setStdin}
+        activeTab={activeTab}
+        onChangeTab={setActiveTab}
+        result={result}
+        executing={executing}
+      />
+    </Layout>
   );
 }
-
-const styles = {
-  container: {
-    fontFamily: "'Inter', sans-serif",
-    backgroundColor: "#0d0e12",
-    color: "#e2e8f0",
-    minHeight: "100vh",
-    display: "flex",
-    flexDirection: "column" as const,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "20px",
-  },
-  header: {
-    textAlign: "center" as const,
-    marginBottom: "30px",
-  },
-  title: {
-    fontSize: "2.5rem",
-    fontWeight: 700,
-    background: "linear-gradient(90deg, #10b981, #06b6d4)",
-    WebkitBackgroundClip: "text",
-    WebkitTextFillColor: "transparent",
-    margin: "0 0 10px 0",
-  },
-  subtitle: {
-    fontSize: "1rem",
-    color: "#94a3b8",
-    margin: 0,
-  },
-  card: {
-    backgroundColor: "rgba(30, 41, 59, 0.4)",
-    backdropFilter: "blur(12px)",
-    borderRadius: "16px",
-    border: "1px solid rgba(255, 255, 255, 0.05)",
-    padding: "30px",
-    width: "100%",
-    maxWidth: "500px",
-    boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
-  },
-  cardTitle: {
-    fontSize: "1.25rem",
-    margin: "0 0 20px 0",
-    fontWeight: 600,
-  },
-  status: {
-    color: "#60a5fa",
-  },
-  errorContainer: {
-    backgroundColor: "rgba(239, 68, 68, 0.1)",
-    border: "1px solid rgba(239, 68, 68, 0.2)",
-    padding: "15px",
-    borderRadius: "8px",
-    marginBottom: "20px",
-  },
-  errorText: {
-    color: "#f87171",
-    margin: "0 0 15px 0",
-    fontSize: "0.9rem",
-  },
-  successContainer: {
-    display: "flex",
-    flexDirection: "column" as const,
-  },
-  statusIndicator: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    marginBottom: "15px",
-  },
-  dot: {
-    width: "10px",
-    height: "10px",
-    backgroundColor: "#10b981",
-    borderRadius: "50%",
-    boxShadow: "0 0 8px #10b981",
-  },
-  statusText: {
-    color: "#34d399",
-    margin: 0,
-    fontSize: "0.95rem",
-    fontWeight: 500,
-  },
-  rawOutput: {
-    backgroundColor: "#090d16",
-    padding: "15px",
-    borderRadius: "8px",
-    border: "1px solid rgba(255, 255, 255, 0.03)",
-    fontSize: "0.85rem",
-    fontFamily: "'Fira Code', monospace",
-    color: "#38bdf8",
-    overflowX: "auto" as const,
-    margin: "0 0 20px 0",
-  },
-  button: {
-    fontFamily: "inherit",
-    fontWeight: 500,
-    fontSize: "0.9rem",
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    border: "1px solid rgba(255, 255, 255, 0.1)",
-    color: "#ffffff",
-    padding: "10px 20px",
-    borderRadius: "8px",
-    cursor: "pointer",
-    transition: "all 0.2s ease",
-    alignSelf: "flex-start",
-  },
-};
