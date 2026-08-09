@@ -17,7 +17,9 @@
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "format": "prettier --write .",
-    "test:shared": "vitest run shared"
+    "test:shared": "vitest run shared",
+    "test:server": "vitest run server",
+    "test": "npm run test:shared && npm run test:server"
   },
   "devDependencies": {
     "@eslint/js": "^9.8.0",

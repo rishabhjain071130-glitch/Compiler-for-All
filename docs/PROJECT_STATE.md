@@ -6,8 +6,8 @@ This document tracks the active state and progress of the **Compiler for All** i
 
 ## 1. Progress Summary
 
-- **Overall Completion**: `36%` (4 of 11 Phases Completed)
-- **Active Phase**: Phase 05: Compiler Engine Configuration Router
+- **Overall Completion**: `45%` (5 of 11 Phases Completed)
+- **Active Phase**: Phase 06: Local Child Process Code Execution Layer
 - **Last Updated**: 2026-08-09
 
 ---
@@ -20,7 +20,7 @@ This document tracks the active state and progress of the **Compiler for All** i
 | **02** | UI/UX Glassmorphic Foundation             | **Completed** |   2026-08-09    | [02_UI_UX.md](file:///d:/Github/Compiler-for-All/prompts/02_UI_UX.md)                           |
 | **03** | Monaco Code Editor Integration            | **Completed** |   2026-08-09    | [03_CODE_EDITOR.md](file:///d:/Github/Compiler-for-All/prompts/03_CODE_EDITOR.md)               |
 | **04** | Multi-Signal Language Detection Engine    | **Completed** |   2026-08-09    | [04_LANGUAGE_DETECTION.md](file:///d:/Github/Compiler-for-All/prompts/04_LANGUAGE_DETECTION.md) |
-| **05** | Compiler Engine Configuration Router      |  **Planned**  |        -        | [05_COMPILER_ENGINE.md](file:///d:/Github/Compiler-for-All/prompts/05_COMPILER_ENGINE.md)       |
+| **05** | Compiler Engine Configuration Router      | **Completed** |   2026-08-09    | [05_COMPILER_ENGINE.md](file:///d:/Github/Compiler-for-All/prompts/05_COMPILER_ENGINE.md)       |
 | **06** | Local Child Process Code Execution Layer  |  **Planned**  |        -        | [06_CODE_EXECUTION.md](file:///d:/Github/Compiler-for-All/prompts/06_CODE_EXECUTION.md)         |
 | **07** | Error Parsing & Friendly Formatting       |  **Planned**  |        -        | [07_ERROR_HANDLING.md](file:///d:/Github/Compiler-for-All/prompts/07_ERROR_HANDLING.md)         |
 | **08** | Sandbox Isolation Security Layer (Docker) |  **Planned**  |        -        | [08_SECURITY_SANDBOX.md](file:///d:/Github/Compiler-for-All/prompts/08_SECURITY_SANDBOX.md)     |
@@ -31,6 +31,15 @@ This document tracks the active state and progress of the **Compiler for All** i
 ---
 
 ## 3. Active Work Logs
+
+### 2026-08-09 (Phase 5 Compiler Engine Router Completed)
+
+- Designed a centralized registry type schema (`server/src/compiler/config.ts`) defining source file naming rules, compilation flags, and execution commands.
+- Implemented a Java public classname scanner (`server/src/compiler/parser.ts`) to extract `public class [Classname]` declarations to map file-naming and execution commands dynamically (falling back to `Main.java` if missing, or `main.[ext]` for other languages).
+- Built a command argument builder converting toolchain arrays dynamically without shell script concats (preventing command injection vectors).
+- Integrated Express endpoint `POST /api/execute` with validation rules (checking code <= 64KB, stdin <= 16KB).
+- Exposed toolchain availability mock interfaces to allow unit tests to trigger `TOOLCHAIN_NOT_FOUND` routing blocks without running local OS compilers.
+- Created Vitest integration suites (`server/src/compiler/compiler.test.ts`) covering 13 assertions verifying C/C++/Java/Python/JS command maps, Java naming parser extraction, size limits, and missing toolchain error status returns.
 
 ### 2026-08-09 (UI and Monaco Refinements)
 
