@@ -9,8 +9,9 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 5000;
 
-app.use(cors());
-app.use(express.json());
+const corsOrigin = process.env.CORS_ORIGIN || "*";
+app.use(cors({ origin: corsOrigin }));
+app.use(express.json({ limit: "128kb" }));
 app.use("/api", executeRouter);
 
 // Health Check API

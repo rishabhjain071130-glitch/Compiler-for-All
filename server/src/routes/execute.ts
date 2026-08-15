@@ -75,7 +75,23 @@ function buildErrorResponse(
   return payload;
 }
 
+// Concurrency limits (maximum active sandbox executions)
+let activeExecutions = 0;
+const MAX_CONCURRENT_EXECUTIONS = 10;
+
 router.post("/execute", async (req: Request, res: Response): Promise<void> => {
+  if (activeExecutions >= MAX_CONCURRENT_EXECUTIONS) {
+    res
+      .status(429)
+      .json(
+        buildErrorResponse(
+          ErrorCode.RATE_LIMITED,
+          "Server execution capacity reached. Please wait a moment and try again."
+        )
+      );
+    return;
+  }
+
   const { code, stdin } = req.body;
 
   // 1. Validate payload types
@@ -160,6 +176,7 @@ router.post("/execute", async (req: Request, res: Response): Promise<void> => {
 
   // 7. Delegate to the active runner through the CodeRunner abstraction.
   //    The execution service never directly invokes host processes.
+  activeExecutions++;
   try {
     const result = await activeRunner.run(code, stdin || "", detection.language);
 
@@ -232,6 +249,8 @@ router.post("/execute", async (req: Request, res: Response): Promise<void> => {
           "An unexpected internal server error occurred. Please try again."
         )
       );
+  } finally {
+    activeExecutions--;
   }
 });
 

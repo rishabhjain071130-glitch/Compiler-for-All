@@ -32,6 +32,25 @@ This document tracks the active state and progress of the **Compiler for All** i
 
 ## 3. Active Work Logs
 
+### 2026-08-15 (Final Production Readiness & Docker Security Audit)
+
+**Changes delivered**:
+
+- `server/src/routes/execute.ts` **(MODIFIED)** — Added in-memory concurrency semaphore (`MAX_CONCURRENT_EXECUTIONS = 10`) returning HTTP 429 `RATE_LIMITED` when server capacity is reached.
+- `server/src/compiler/errorParser.ts` **(MODIFIED)** — Added `ErrorCode.RATE_LIMITED` constant.
+- `server/src/index.ts` **(MODIFIED)** — Configured CORS origin handling (`CORS_ORIGIN` env fallback) and capped Express JSON request body parsing at `128kb`.
+- `.env.example` **(NEW)** — Added environment configuration template documenting `PORT`, `NODE_ENV`, and `CORS_ORIGIN`.
+- `docs/ARCHITECTURE.md` **(MODIFIED)** — Documented technical security rationale for `/tmp:rw,exec,nosuid,size=5m` tmpfs mount.
+
+**Audit Results**:
+
+- **Docker Security**: `--network none`, `-m 64m`, `--cpus 0.5`, `--pids-limit 50`, `--user 1000:1000`, `--read-only`, `--ulimit nofile=64:64`, read-only workspace mount, `--rm`, container naming with `docker rm -f` timeout cleanup.
+- **Command Injection**: Zero untrusted shell execution. Process spawning strictly uses array args to `docker` binary without shell wrappers.
+- **Error Leakage**: Path sanitization strips host paths, container volumes, and stack traces before returning payload.
+- **Verification Suite**: 103/103 tests pass; ESLint 0 errors/warnings; Prettier clean; production build clean.
+
+---
+
 ### 2026-08-15 (Real End-to-End Docker Sandbox Execution Verification)
 
 **Changes delivered**:

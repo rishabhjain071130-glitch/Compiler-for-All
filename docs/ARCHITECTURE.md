@@ -72,7 +72,7 @@ graph TD
   - **Memory & Swap Cap**: 64MB RAM limit per execution (`-m 64m --memory-swap 64m`).
   - **Process / Fork Limit**: Maximum 50 PID tasks (`--pids-limit 50`).
   - **File Descriptor Cap**: Maximum 64 open files (`--ulimit nofile=64:64`).
-  - **Storage Access**: Read-only root filesystem (`--read-only`), read-only source workspace volume mount (`-v [tmpdir]:/workspace:ro`), and temporary writeable RAM-disk (`--tmpfs /tmp:rw,noexec,nosuid,size=5m`).
+  - **Storage Access**: Read-only root filesystem (`--read-only`), read-only source workspace volume mount (`-v [tmpdir]:/workspace:ro`), and temporary writeable RAM-disk (`--tmpfs /tmp:rw,exec,nosuid,size=5m`). _Security Rationale for `exec` on `/tmp`_: Because the root filesystem `/` and source workspace volume `/workspace` are mounted read-only, `/tmp` is the sole writable location inside the container. Compilers (GCC/G++) and JVM class outputs must generate executable binaries in `/tmp`. Security isolation remains fully enforced via `--network none`, `--user 1000:1000`, `--read-only`, `--pids-limit 50`, `-m 64m`, and `--cpus 0.5`.
   - **Timeouts**: Hard total timeout of 10 seconds per execution; 5 seconds execution limit; 8 seconds compiler limit.
   - **User Privileges**: Run inside container as unprivileged user (`--user 1000:1000`).
   - **Auto-Cleanup**: Mandatory `--rm` flag and host `fs.rm` recursive cleanup on workspace disposal.
