@@ -36,10 +36,10 @@ describe("Phase 8: Security Sandbox Unit & Configuration Tests", () => {
   // -------------------------------------------------------------------------
   // 3. Image mapping per language
   // -------------------------------------------------------------------------
-  it("(T3) maps supported languages to specified slim Docker images", () => {
-    expect(DOCKER_IMAGES.c).toBe("gcc:12-slim");
-    expect(DOCKER_IMAGES.cpp).toBe("gcc:12-slim");
-    expect(DOCKER_IMAGES.java).toBe("openjdk:17-slim");
+  it("(T3) maps supported languages to verified official Docker images", () => {
+    expect(DOCKER_IMAGES.c).toBe("gcc:12-bookworm");
+    expect(DOCKER_IMAGES.cpp).toBe("gcc:12-bookworm");
+    expect(DOCKER_IMAGES.java).toBe("eclipse-temurin:17-jdk");
     expect(DOCKER_IMAGES.python).toBe("python:3.10-slim");
     expect(DOCKER_IMAGES.javascript).toBe("node:18-slim");
   });

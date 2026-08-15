@@ -32,9 +32,9 @@ const execFileAsync = promisify(execFile);
  * Public, official, lightweight slim images per Phase 8 specification.
  */
 export const DOCKER_IMAGES: Record<string, string> = {
-  c: "gcc:12-slim",
-  cpp: "gcc:12-slim",
-  java: "openjdk:17-slim",
+  c: "gcc:12-bookworm",
+  cpp: "gcc:12-bookworm",
+  java: "eclipse-temurin:17-jdk",
   python: "python:3.10-slim",
   javascript: "node:18-slim",
 };

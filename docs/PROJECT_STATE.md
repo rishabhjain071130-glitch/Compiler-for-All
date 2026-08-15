@@ -32,6 +32,16 @@ This document tracks the active state and progress of the **Compiler for All** i
 
 ## 3. Active Work Logs
 
+### 2026-08-15 (Docker Toolchain Image Correction)
+
+**Changes delivered**:
+
+- `server/src/compiler/sandbox.ts` **(MODIFIED)** — Updated `DOCKER_IMAGES` mapping to replace stale/unavailable tags: C/C++ → `gcc:12-bookworm`, Java → `eclipse-temurin:17-jdk`, Python → `python:3.10-slim`, JavaScript → `node:18-slim`.
+- `server/src/compiler/sandbox.test.ts` **(MODIFIED)** — Updated test T3 assertions to verify `gcc:12-bookworm` and `eclipse-temurin:17-jdk`.
+- `docs/ARCHITECTURE.md` **(MODIFIED)** — Updated Section 2.4 image registry table with verified official Docker images.
+
+---
+
 ### 2026-08-15 (Phase 10 — Visual Polish, Animations, & Speeds)
 
 **Changes delivered**:

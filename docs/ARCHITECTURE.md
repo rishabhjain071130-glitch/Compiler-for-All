@@ -62,10 +62,10 @@ graph TD
 
 - **Technology Stack**: Docker, gVisor runtime (`runsc`) for kernel-level security isolation, TypeScript sandbox manager (`server/src/compiler/sandbox.ts`).
 - **Container Image Registry**:
-  - **C / C++**: `gcc:12-slim`
-  - **Java**: `openjdk:17-slim`
-  - **Python**: `python:3.10-slim`
-  - **JavaScript**: `node:18-slim`
+  - **C / C++**: `gcc:12-bookworm` (Official GCC release on Debian 12 containing `gcc` C11 and `g++` C++17)
+  - **Java**: `eclipse-temurin:17-jdk` (Official Eclipse Temurin OpenJDK 17 distribution containing `javac` and `java`)
+  - **Python**: `python:3.10-slim` (Official Python 3.10 slim image)
+  - **JavaScript**: `node:18-slim` (Official Node.js 18 slim image)
 - **Isolating Constraints**:
   - **Network Block**: No internet access inside the running containers (`--network none`).
   - **CPU Core Cap**: 0.5 CPU core limit per execution (`--cpus="0.5"`).
