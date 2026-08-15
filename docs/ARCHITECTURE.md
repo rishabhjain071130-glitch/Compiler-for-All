@@ -58,16 +58,25 @@ graph TD
   - **Signal C: Syntactic Markers** (semi-colons, braces, pythonic indentation structures).
   - **Signal D: Keyword Frequency** (`cout`, `printf`, `System.out.println`, `console.log`).
 
-### 2.4 Security Sandbox (Docker Service)
+### 2.4 Security Sandbox (Docker Service & Fallback)
 
-- **Technology Stack**: Docker, gVisor runtime (`runsc`) for kernel-level security isolation.
+- **Technology Stack**: Docker, gVisor runtime (`runsc`) for kernel-level security isolation, TypeScript sandbox manager (`server/src/compiler/sandbox.ts`).
+- **Container Image Registry**:
+  - **C / C++**: `gcc:12-slim`
+  - **Java**: `openjdk:17-slim`
+  - **Python**: `python:3.10-slim`
+  - **JavaScript**: `node:18-slim`
 - **Isolating Constraints**:
-  - **Network**: No internet access inside the running containers (`--network none`).
-  - **CPU**: 0.5 CPU core limit per execution (`--cpus="0.5"`).
-  - **Memory**: 64MB RAM limit per execution (`-m 64m --memory-swap 64m`).
-  - **Storage**: Read-only root filesystem, except for `/tmp` mounted as a temporary RAM-disk (tmpfs) limited to 5MB.
-  - **Time Limit**: Hard timeout of 5 seconds for execution; compiler timeout of 8 seconds.
-  - **User Privileges**: Run inside the container as a non-root user (`uid=1000, gid=1000`).
+  - **Network Block**: No internet access inside the running containers (`--network none`).
+  - **CPU Core Cap**: 0.5 CPU core limit per execution (`--cpus="0.5"`).
+  - **Memory & Swap Cap**: 64MB RAM limit per execution (`-m 64m --memory-swap 64m`).
+  - **Process / Fork Limit**: Maximum 50 PID tasks (`--pids-limit 50`).
+  - **File Descriptor Cap**: Maximum 64 open files (`--ulimit nofile=64:64`).
+  - **Storage Access**: Read-only root filesystem (`--read-only`), read-only source workspace volume mount (`-v [tmpdir]:/workspace:ro`), and temporary writeable RAM-disk (`--tmpfs /tmp:rw,noexec,nosuid,size=5m`).
+  - **Timeouts**: Hard total timeout of 10 seconds per execution; 5 seconds execution limit; 8 seconds compiler limit.
+  - **User Privileges**: Run inside container as unprivileged user (`--user 1000:1000`).
+  - **Auto-Cleanup**: Mandatory `--rm` flag and host `fs.rm` recursive cleanup on workspace disposal.
+  - **Graceful Fallback**: `AutoSelectingSandboxRunner` detects Docker daemon availability via `isDockerAvailable()`. If Docker is running, execution routes to `DockerSandboxRunner`. If Docker is unconfigured or unavailable, execution falls back cleanly to `SandboxUnavailableRunner` without executing code on the host.
 
 ---
 

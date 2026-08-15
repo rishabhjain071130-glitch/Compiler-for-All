@@ -1,8 +1,32 @@
 import { Router, Request, Response } from "express";
 import { detectLanguage } from "../../../shared/detector.js";
 import { getLanguageConfig } from "../compiler/config.js";
-import { SandboxUnavailableRunner, MockCodeRunner, CodeRunner } from "../compiler/runner.js";
 import { ErrorCode, parseCompilerOutput } from "../compiler/errorParser.js";
+import {
+  SandboxUnavailableRunner,
+  MockCodeRunner,
+  DockerSandboxRunner,
+  CodeRunner,
+  ExecutionResult,
+} from "../compiler/runner.js";
+import { isDockerAvailable } from "../compiler/sandbox.js";
+
+/**
+ * AutoSelectingSandboxRunner — Delegates to DockerSandboxRunner when Docker daemon
+ * is running on the host system, or falls back safely to SandboxUnavailableRunner.
+ */
+export class AutoSelectingSandboxRunner implements CodeRunner {
+  private dockerRunner = new DockerSandboxRunner();
+  private unavailableRunner = new SandboxUnavailableRunner();
+
+  async run(code: string, stdin: string, language: string): Promise<ExecutionResult> {
+    const dockerOk = await isDockerAvailable();
+    if (dockerOk) {
+      return this.dockerRunner.run(code, stdin, language);
+    }
+    return this.unavailableRunner.run(code, stdin, language);
+  }
+}
 
 const router = Router();
 
@@ -10,9 +34,8 @@ const router = Router();
 // Active runner selection.
 //
 // Production (NODE_ENV !== "test"):
-//   SandboxUnavailableRunner — returns a structured runner_unavailable response.
-//   No user code is executed on the host machine.
-//   A real sandboxed runner will replace this in Phase 8.
+//   AutoSelectingSandboxRunner — uses DockerSandboxRunner if Docker is running,
+//   else SandboxUnavailableRunner. No unsafe host code execution is performed.
 //
 // Test (NODE_ENV === "test"):
 //   MockCodeRunner — simulates all result types without any host execution.
@@ -22,7 +45,7 @@ const useMock =
 
 export const activeRunner: CodeRunner = useMock
   ? new MockCodeRunner()
-  : new SandboxUnavailableRunner();
+  : new AutoSelectingSandboxRunner();
 
 // Max payload bounds
 const MAX_CODE_BYTES = 64 * 1024; // 64 KB
@@ -140,7 +163,7 @@ router.post("/execute", async (req: Request, res: Response): Promise<void> => {
   try {
     const result = await activeRunner.run(code, stdin || "", detection.language);
 
-    // Runner unavailable — sandbox not yet implemented
+    // Runner unavailable — Docker daemon not running or not installed
     if (result.status === "runner_unavailable") {
       res
         .status(503)
@@ -148,7 +171,7 @@ router.post("/execute", async (req: Request, res: Response): Promise<void> => {
           buildErrorResponse(
             ErrorCode.RUNNER_UNAVAILABLE,
             "The isolated execution environment is currently unavailable. " +
-              "Code execution requires a sandboxed runner (planned for Phase 8: Sandbox Isolation). " +
+              "Docker daemon is not running or not installed on the host system. " +
               "No user code was executed on the host system.",
             undefined,
             config.displayName
@@ -181,7 +204,7 @@ router.post("/execute", async (req: Request, res: Response): Promise<void> => {
       if (rawForParsing) {
         const parsed = parseCompilerOutput(detection.language, rawForParsing);
         diagnostics = parsed.diagnostics;
-        friendlyMessage = friendlyMessage ?? (parsed.friendlyMessage ?? undefined);
+        friendlyMessage = friendlyMessage ?? parsed.friendlyMessage ?? undefined;
       }
     }
 

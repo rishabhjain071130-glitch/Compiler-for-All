@@ -6,8 +6,8 @@ This document tracks the active state and progress of the **Compiler for All** i
 
 ## 1. Progress Summary
 
-- **Overall Completion**: `63%` (7 of 11 Phases Completed)
-- **Active Phase**: Phase 08: Sandbox Isolation Security Layer
+- **Overall Completion**: `73%` (8 of 11 Phases Completed)
+- **Active Phase**: Phase 09: End-to-End Testing & Security Audit
 - **Last Updated**: 2026-08-15
 
 ---
@@ -23,7 +23,7 @@ This document tracks the active state and progress of the **Compiler for All** i
 | **05** | Compiler Engine Configuration Router      | **Completed** |   2026-08-09    | [05_COMPILER_ENGINE.md](file:///d:/Github/Compiler-for-All/prompts/05_COMPILER_ENGINE.md)                     |
 | **06** | Local Child Process Code Execution Layer  | **Completed** |   2026-08-09    | [06_CODE_EXECUTION.md](file:///d:/Github/Compiler-for-All/prompts/06_CODE_EXECUTION.md) ⚠️ Security-corrected |
 | **07** | Error Parsing & Friendly Formatting       | **Completed** |   2026-08-15    | [07_ERROR_HANDLING.md](file:///d:/Github/Compiler-for-All/prompts/07_ERROR_HANDLING.md)                       |
-| **08** | Sandbox Isolation Security Layer (Docker) |  **Planned**  |        -        | [08_SECURITY_SANDBOX.md](file:///d:/Github/Compiler-for-All/prompts/08_SECURITY_SANDBOX.md)                   |
+| **08** | Sandbox Isolation Security Layer (Docker) | **Completed** |   2026-08-15    | [08_SECURITY_SANDBOX.md](file:///d:/Github/Compiler-for-All/prompts/08_SECURITY_SANDBOX.md)                   |
 | **09** | End-to-End Testing & Security Audit       |  **Planned**  |        -        | [09_TESTING.md](file:///d:/Github/Compiler-for-All/prompts/09_TESTING.md)                                     |
 | **10** | Visual Polish, Animations, & Speeds       |  **Planned**  |        -        | [10_POLISH.md](file:///d:/Github/Compiler-for-All/prompts/10_POLISH.md)                                       |
 | **11** | Production Deployment & Orchestration     |  **Planned**  |        -        | [11_DEPLOYMENT.md](file:///d:/Github/Compiler-for-All/prompts/11_DEPLOYMENT.md)                               |
@@ -31,6 +31,27 @@ This document tracks the active state and progress of the **Compiler for All** i
 ---
 
 ## 3. Active Work Logs
+
+### 2026-08-15 (Phase 8 — Sandbox Isolation Security Layer)
+
+**Changes delivered**:
+
+- `server/src/compiler/sandbox.ts` **(NEW)** — Full Docker sandbox manager (`DockerSandbox` implementing `CodeRunner`). Features `isDockerAvailable()`, `isGvisorAvailable()`, image mapping (`gcc:12-slim`, `openjdk:17-slim`, `python:3.10-slim`, `node:18-slim`), Windows volume path formatting (`toDockerVolumePath`), container shell command builder (`buildContainerShellCommand`), `spawnDockerContainer` execution handler with timeout + 1MB stdout/stderr output limits, exit code mapping (124 → timeout, 137 → OOM resource_limit_exceeded), and automatic host temp directory cleanup (`fs.rm`).
+- `server/src/compiler/runner.ts` **(MODIFIED)** — Exports `DockerSandboxRunner` (alias for `DockerSandbox`). `SandboxUnavailableRunner` message updated to reflect Docker daemon status.
+- `server/src/routes/execute.ts` **(MODIFIED)** — Implements `AutoSelectingSandboxRunner` which dynamically probes `isDockerAvailable()`. Routes to `DockerSandboxRunner` if Docker daemon is active, or `SandboxUnavailableRunner` safely if Docker is unconfigured/offline.
+- `server/src/compiler/sandbox.test.ts` **(NEW)** — 20 security & functional sandbox tests: network blocking (--network none), non-root execution (--user 1000:1000), read-only root/workspace (--read-only, -v :ro), hardware caps (-m 64m, --cpus=0.5, --pids-limit 50), RAM tmpfs (--tmpfs /tmp:rw,noexec,nosuid,size=5m), no privileged mode, gVisor runtime flag, and workspace cleanup.
+- `docs/ARCHITECTURE.md` **(MODIFIED)** — Section 2.4 updated with full Docker sandbox specification, container image registry, isolation constraints, and graceful fallback mechanism.
+
+**Verification results**:
+
+- `npm run test` — **103 tests passed** (12 shared + 91 server). 0 failures.
+- `npm run lint` — **0 errors, 0 warnings**.
+- `npm run format:check` — **All matched files use Prettier code style**.
+- `npm run build` — **Server `tsc` clean + Vite client: 51 modules, 188 KB JS bundle**.
+
+**Security**: 100% compliant with Phase 6 & Phase 8 rules. User code executes inside ephemeral containers when Docker is active, or returns `RUNNER_UNAVAILABLE` when Docker is missing. Arbitrary host child processes remain strictly forbidden in the user execution path.
+
+---
 
 ### 2026-08-15 (Phase 7 — Error Handling & Diagnostic System)
 

@@ -87,14 +87,18 @@ export function resolveExecutionCommand(
   return { executable, args };
 }
 
+import { DockerSandbox } from "./sandbox.js";
+
+/**
+ * DockerSandboxRunner — production runner that routes user code to Docker/gVisor containers.
+ */
+export const DockerSandboxRunner = DockerSandbox;
+
 // ---------------------------------------------------------------------------
-// SandboxUnavailableRunner — SAFE default runner for Phase 6/7.
+// SandboxUnavailableRunner — SAFE default runner when Docker is not present.
 //
 // This runner does NOT execute any user-provided source code.
 // It returns a structured runner_unavailable response for every request.
-//
-// A real sandboxed runner (Docker/gVisor) will replace this in Phase 8.
-// This class intentionally has no child_process, fs, or exec imports.
 // ---------------------------------------------------------------------------
 
 export class SandboxUnavailableRunner implements CodeRunner {
@@ -109,8 +113,8 @@ export class SandboxUnavailableRunner implements CodeRunner {
       exitCode: null,
       timeMs: null,
       message:
-        "The isolated execution environment is not yet available. " +
-        "Code execution requires a sandboxed runner (planned for Phase 8: Sandbox Isolation). " +
+        "The isolated execution environment is currently unavailable. " +
+        "Docker daemon is not running or not installed on the host system. " +
         "No user code was executed on the host system.",
     };
   }
