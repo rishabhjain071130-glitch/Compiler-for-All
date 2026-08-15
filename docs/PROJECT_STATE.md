@@ -6,42 +6,68 @@ This document tracks the active state and progress of the **Compiler for All** i
 
 ## 1. Progress Summary
 
-- **Overall Completion**: `54%` (6 of 11 Phases Completed — Phase 6 security-corrected)
-- **Active Phase**: Phase 07: Error Parsing & Friendly Formatting
-- **Last Updated**: 2026-08-09
+- **Overall Completion**: `63%` (7 of 11 Phases Completed)
+- **Active Phase**: Phase 08: Sandbox Isolation Security Layer
+- **Last Updated**: 2026-08-15
 
 ---
 
 ## 2. Implementation Phase Status
 
-| Phase  | Description                               |    Status     | Completion Date | Prompt File                                                                                     |
-| :----: | :---------------------------------------- | :-----------: | :-------------: | :---------------------------------------------------------------------------------------------- |
-| **01** | Project Setup & Monorepo Scaffold         | **Completed** |   2026-08-09    | [01_PROJECT_SETUP.md](file:///d:/Github/Compiler-for-All/prompts/01_PROJECT_SETUP.md)           |
-| **02** | UI/UX Glassmorphic Foundation             | **Completed** |   2026-08-09    | [02_UI_UX.md](file:///d:/Github/Compiler-for-All/prompts/02_UI_UX.md)                           |
-| **03** | Monaco Code Editor Integration            | **Completed** |   2026-08-09    | [03_CODE_EDITOR.md](file:///d:/Github/Compiler-for-All/prompts/03_CODE_EDITOR.md)               |
-| **04** | Multi-Signal Language Detection Engine    | **Completed** |   2026-08-09    | [04_LANGUAGE_DETECTION.md](file:///d:/Github/Compiler-for-All/prompts/04_LANGUAGE_DETECTION.md) |
-| **05** | Compiler Engine Configuration Router      | **Completed** |   2026-08-09    | [05_COMPILER_ENGINE.md](file:///d:/Github/Compiler-for-All/prompts/05_COMPILER_ENGINE.md)       |
+| Phase  | Description                               |    Status     | Completion Date | Prompt File                                                                                                   |
+| :----: | :---------------------------------------- | :-----------: | :-------------: | :------------------------------------------------------------------------------------------------------------ |
+| **01** | Project Setup & Monorepo Scaffold         | **Completed** |   2026-08-09    | [01_PROJECT_SETUP.md](file:///d:/Github/Compiler-for-All/prompts/01_PROJECT_SETUP.md)                         |
+| **02** | UI/UX Glassmorphic Foundation             | **Completed** |   2026-08-09    | [02_UI_UX.md](file:///d:/Github/Compiler-for-All/prompts/02_UI_UX.md)                                         |
+| **03** | Monaco Code Editor Integration            | **Completed** |   2026-08-09    | [03_CODE_EDITOR.md](file:///d:/Github/Compiler-for-All/prompts/03_CODE_EDITOR.md)                             |
+| **04** | Multi-Signal Language Detection Engine    | **Completed** |   2026-08-09    | [04_LANGUAGE_DETECTION.md](file:///d:/Github/Compiler-for-All/prompts/04_LANGUAGE_DETECTION.md)               |
+| **05** | Compiler Engine Configuration Router      | **Completed** |   2026-08-09    | [05_COMPILER_ENGINE.md](file:///d:/Github/Compiler-for-All/prompts/05_COMPILER_ENGINE.md)                     |
 | **06** | Local Child Process Code Execution Layer  | **Completed** |   2026-08-09    | [06_CODE_EXECUTION.md](file:///d:/Github/Compiler-for-All/prompts/06_CODE_EXECUTION.md) ⚠️ Security-corrected |
-| **07** | Error Parsing & Friendly Formatting       |  **Planned**  |        -        | [07_ERROR_HANDLING.md](file:///d:/Github/Compiler-for-All/prompts/07_ERROR_HANDLING.md)         |
-| **08** | Sandbox Isolation Security Layer (Docker) |  **Planned**  |        -        | [08_SECURITY_SANDBOX.md](file:///d:/Github/Compiler-for-All/prompts/08_SECURITY_SANDBOX.md)     |
-| **09** | End-to-End Testing & Security Audit       |  **Planned**  |        -        | [09_TESTING.md](file:///d:/Github/Compiler-for-All/prompts/09_TESTING.md)                       |
-| **10** | Visual Polish, Animations, & Speeds       |  **Planned**  |        -        | [10_POLISH.md](file:///d:/Github/Compiler-for-All/prompts/10_POLISH.md)                         |
-| **11** | Production Deployment & Orchestration     |  **Planned**  |        -        | [11_DEPLOYMENT.md](file:///d:/Github/Compiler-for-All/prompts/11_DEPLOYMENT.md)                 |
+| **07** | Error Parsing & Friendly Formatting       | **Completed** |   2026-08-15    | [07_ERROR_HANDLING.md](file:///d:/Github/Compiler-for-All/prompts/07_ERROR_HANDLING.md)                       |
+| **08** | Sandbox Isolation Security Layer (Docker) |  **Planned**  |        -        | [08_SECURITY_SANDBOX.md](file:///d:/Github/Compiler-for-All/prompts/08_SECURITY_SANDBOX.md)                   |
+| **09** | End-to-End Testing & Security Audit       |  **Planned**  |        -        | [09_TESTING.md](file:///d:/Github/Compiler-for-All/prompts/09_TESTING.md)                                     |
+| **10** | Visual Polish, Animations, & Speeds       |  **Planned**  |        -        | [10_POLISH.md](file:///d:/Github/Compiler-for-All/prompts/10_POLISH.md)                                       |
+| **11** | Production Deployment & Orchestration     |  **Planned**  |        -        | [11_DEPLOYMENT.md](file:///d:/Github/Compiler-for-All/prompts/11_DEPLOYMENT.md)                               |
 
 ---
 
 ## 3. Active Work Logs
+
+### 2026-08-15 (Phase 7 — Error Handling & Diagnostic System)
+
+**Changes delivered**:
+
+- `server/src/compiler/errorParser.ts` **(NEW)** — Centralized error model with 12 stable `ErrorCode` constants, `CompilerDiagnostic` interface, regex-based diagnostic extraction for GCC/G++/Java/Python/Node.js, friendly translation map (10 error patterns → beginner explanations), and `stripSensitivePaths()` utility.
+- `server/src/compiler/runner.ts` **(MODIFIED)** — `ExecutionResult` extended with `diagnostics?: CompilerDiagnostic[]` and `friendlyMessage?: string`. `MockCodeRunner` compilation_error mock includes a pre-built diagnostic object at line 5, column 5. `resource_limit_exceeded` added to status union.
+- `server/src/routes/execute.ts` **(MODIFIED)** — Full rewrite: all error responses use `{code, message, details?, language?}` schema. HTTP 400 for INVALID_REQUEST/CODE_TOO_LARGE/STDIN_TOO_LARGE/LANGUAGE_NOT_DETECTED/UNSUPPORTED_LANGUAGE. HTTP 503 for RUNNER_UNAVAILABLE/TOOLCHAIN_NOT_FOUND. HTTP 500 for INTERNAL_ERROR. Diagnostics and friendlyMessage attached to all 200 responses. Raw errors never reach client.
+- `client/src/types/execution.ts` **(NEW)** — Shared frontend types: `ExecutionStatus`, `DiagnosticMarker`, `ExecutionResult`, `EXECUTION_STATE_LABELS`, `ClientErrorCode`.
+- `client/src/App.tsx` **(MODIFIED)** — Uses shared types. All HTTP status codes (400/503/500/200) handled separately. Diagnostics passed to `EditorPane`. Markers cleared on edit and on new run start.
+- `client/src/components/EditorPane.tsx` **(MODIFIED)** — Monaco `setModelMarkers` integration: error squiggles applied from `diagnostics` prop when `line !== null`; cleared automatically on empty diagnostics.
+- `client/src/components/Console.tsx` **(MODIFIED)** — All 13 error states rendered with distinct UI cards (rose banners for errors, amber banners for warnings/unavailable). `FriendlyMessage` component renders `**bold**` markdown for beginner explanations. Compiler tab shows Monaco marker notice when diagnostics have locations.
+- `server/src/compiler/compiler.test.ts` **(MODIFIED)** — 23 new tests added (sections 9–13): error parser unit tests (8), friendly message translation (7), path sanitization (3), error code constants (1), Phase 7 HTTP status mapping integration tests (16 scenarios including T1–T16).
+
+**Verification results**:
+
+- `npm run test` — **83 tests passed** (12 shared + 71 server). 0 failures.
+- `npm run lint` — **0 errors, 0 warnings**.
+- `npm run format:check` — **All files formatted** (Prettier write applied).
+- `npm run build` — **Server `tsc` clean + Vite client: 51 modules, 188 KB JS bundle**.
+
+**Security**: Phase 6 boundary fully preserved. No `child_process` calls introduced. No stack traces, host paths, env vars, or executable paths leak to client through any error path.
+
+---
 
 ### 2026-08-09 (Phase 6 Security Correction — Execution Boundary Isolation)
 
 **Problem identified**: The initial Phase 6 implementation (`LocalCodeRunner`) contained `child_process.spawn` calls that directly executed untrusted user source code (gcc, g++, javac, python3, node) on the host operating system. This violates the project's security architecture.
 
 **Unsafe paths removed**:
+
 - `LocalCodeRunner` class deleted entirely from `server/src/compiler/runner.ts`
 - `child_process.spawn` (lines 124, 190 of previous implementation) — **removed**
 - `fs`, `crypto`, `spawn`, `performance` imports that supported host execution — **removed**
 
 **New execution architecture**:
+
 ```
 Frontend
     ↓
@@ -57,9 +83,10 @@ MockCodeRunner            [test environment only — simulates all result types]
 ```
 
 **`CodeRunner` interface** (unchanged, preserved as-is):
+
 ```typescript
 interface CodeRunner {
-  run(code: string, stdin: string, language: string): Promise<ExecutionResult>
+  run(code: string, stdin: string, language: string): Promise<ExecutionResult>;
 }
 ```
 
@@ -70,6 +97,7 @@ interface CodeRunner {
 **Security review results**: Zero `child_process`, `spawn`, `exec`, `execFile`, or `fork` calls reachable through any API route. The only `child_process` references in the codebase are in code comments.
 
 **Test coverage (48 tests total — all pass)**:
+
 - `SandboxUnavailableRunner`: returns `runner_unavailable` for all 5 languages, never executes code
 - HTTP 503 returned when runner is unavailable
 - `MockCodeRunner`: success, compilation failure, runtime error, timeout, runner_unavailable, stdin/source separation
@@ -77,7 +105,6 @@ interface CodeRunner {
 - Payload constraints (empty code, >64KB code, >16KB stdin) enforced before runner is called
 
 **Phase 8 plan**: `SandboxUnavailableRunner` will be replaced by a `DockerSandboxRunner` that runs user code inside a Docker/gVisor isolated container with restricted syscalls, no network access, and resource limits.
-
 
 - Implemented `server/src/compiler/runner.ts` with `LocalCodeRunner` and `MockCodeRunner` classes.
 - `LocalCodeRunner` creates a UUID-keyed temp workspace per run, writes source code to disk, and spawns child processes using `child_process.spawn` (never `exec`).

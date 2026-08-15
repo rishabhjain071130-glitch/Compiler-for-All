@@ -1,5 +1,6 @@
 import path from "path";
 import { getLanguageConfig } from "./config.js";
+import type { CompilerDiagnostic } from "./errorParser.js";
 
 // ---------------------------------------------------------------------------
 // ExecutionResult — structured result returned by every CodeRunner
@@ -7,7 +8,13 @@ import { getLanguageConfig } from "./config.js";
 
 export interface ExecutionResult {
   status:
-    "success" | "compilation_error" | "runtime_error" | "timeout" | "runner_unavailable" | "error";
+    | "success"
+    | "compilation_error"
+    | "runtime_error"
+    | "timeout"
+    | "runner_unavailable"
+    | "resource_limit_exceeded"
+    | "error";
   /** Structured error code for programmatic handling by clients. */
   errorCode?: string;
   detectedLanguage: string;
@@ -18,6 +25,10 @@ export interface ExecutionResult {
   exitCode: number | null;
   timeMs: number | null;
   message?: string;
+  /** Structured compiler/runtime diagnostics (line, column, severity, message). */
+  diagnostics?: CompilerDiagnostic[];
+  /** Beginner-friendly explanation of the error, when available. */
+  friendlyMessage?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,14 +199,24 @@ export class MockCodeRunner implements CodeRunner {
     if (failureType === "compilation_error") {
       return {
         status: "compilation_error",
-        errorCode: "COMPILATION_FAILED",
+        errorCode: "COMPILATION_ERROR",
         detectedLanguage: config.language,
         compilationStatus: 1,
-        compilationOutput: `src/main.${config.extension}:5:5: error: expected ';' before return`,
+        compilationOutput: `main.${config.extension}:5:5: error: expected ';' before return`,
         stdout: "",
         stderr: "Compilation failed.",
         exitCode: 1,
         timeMs: null,
+        diagnostics: [
+          {
+            line: 5,
+            column: 5,
+            severity: "error" as const,
+            message: "expected ';' before return",
+            raw: `main.${config.extension}:5:5: error: expected ';' before return`,
+          },
+        ],
+        friendlyMessage: undefined,
       };
     }
 
@@ -220,6 +241,9 @@ export class MockCodeRunner implements CodeRunner {
         stderr: "ZeroDivisionError: division by zero",
         exitCode: 1,
         timeMs: 15,
+        diagnostics: [],
+        friendlyMessage:
+          "**Division by Zero**: Your code is trying to divide a number by zero, which is mathematically undefined. Check that your divisor is never zero before performing division.",
       };
     }
 

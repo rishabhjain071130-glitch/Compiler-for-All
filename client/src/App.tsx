@@ -1,28 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Layout from "./components/Layout.tsx";
 import EditorPane from "./components/EditorPane.tsx";
 import Console from "./components/Console.tsx";
 import ControlBar from "./components/ControlBar.tsx";
 import { detectLanguage, DetectionResult } from "../../shared/detector.ts";
-
-interface ExecutionResult {
-  status:
-    | "success"
-    | "compilation_error"
-    | "runtime_error"
-    | "resource_limit_exceeded"
-    | "timeout"
-    | "runner_unavailable"
-    | "error"
-    | null;
-  errorCode?: string;
-  stdout: string;
-  stderr: string;
-  exitCode: number | null;
-  timeMs: number | null;
-  compilationOutput?: string;
-  message?: string;
-}
+import { ExecutionResult, DiagnosticMarker, ClientErrorCode } from "./types/execution.ts";
 
 const DEFAULT_CODE = `#include <stdio.h>
 
@@ -42,6 +24,7 @@ export default function App() {
   });
   const [executing, setExecuting] = useState<boolean>(false);
   const [result, setResult] = useState<ExecutionResult | null>(null);
+  const [diagnostics, setDiagnostics] = useState<DiagnosticMarker[]>([]);
 
   const detectedLanguage = detectionResult.language;
 
@@ -51,10 +34,23 @@ export default function App() {
     setDetectionResult(res);
   }, [code]);
 
+  // Clear Monaco markers whenever code changes (edit clears error highlights)
+  const handleCodeChange = useCallback(
+    (newCode: string) => {
+      setCode(newCode);
+      if (diagnostics.length > 0) {
+        setDiagnostics([]);
+      }
+    },
+    [diagnostics.length]
+  );
+
   // Real code execution run
   const handleRun = async () => {
     setExecuting(true);
     setResult(null);
+    // Clear all previous markers before starting a new run
+    setDiagnostics([]);
 
     try {
       const response = await fetch("/api/execute", {
@@ -68,13 +64,41 @@ export default function App() {
         }),
       });
 
+      // --- HTTP 503: Runner/Toolchain unavailable ---
       if (response.status === 503) {
-        const errData = await response.json();
+        const errData = (await response.json()) as {
+          code?: string;
+          message?: string;
+          language?: string;
+        };
+        const errorCode = errData.code ?? ClientErrorCode.RUNNER_UNAVAILABLE;
         setResult({
-          status: "runner_unavailable",
-          errorCode: "RUNNER_UNAVAILABLE",
+          status:
+            errorCode === ClientErrorCode.TOOLCHAIN_NOT_FOUND ? "error" : "runner_unavailable",
+          errorCode,
           stdout: "",
           stderr: "",
+          exitCode: null,
+          timeMs: null,
+          message: errData.message,
+        });
+        setActiveTab(errorCode === ClientErrorCode.TOOLCHAIN_NOT_FOUND ? "compiler" : "output");
+        setExecuting(false);
+        return;
+      }
+
+      // --- HTTP 400: Client-side / validation errors ---
+      if (response.status === 400) {
+        const errData = (await response.json()) as {
+          code?: string;
+          message?: string;
+        };
+        const errorCode = errData.code ?? ClientErrorCode.INVALID_REQUEST;
+        setResult({
+          status: "error",
+          errorCode,
+          stdout: "",
+          stderr: errData.message || "Bad Request",
           exitCode: null,
           timeMs: null,
           message: errData.message,
@@ -84,53 +108,73 @@ export default function App() {
         return;
       }
 
-      if (response.status === 400) {
-        const errData = await response.json();
-        if (errData.code === "TOOLCHAIN_NOT_FOUND") {
-          setResult({
-            status: "error",
-            errorCode: "TOOLCHAIN_NOT_FOUND",
-            stdout: "",
-            stderr: "Execution environment unavailable",
-            exitCode: null,
-            timeMs: null,
-            compilationOutput: errData.message,
-          });
-          setActiveTab("compiler");
-          setExecuting(false);
-          return;
-        } else {
-          setResult({
-            status: "error",
-            stdout: "",
-            stderr: errData.message || errData.error || "Bad Request",
-            exitCode: null,
-            timeMs: null,
-          });
-          setActiveTab("output");
-          setExecuting(false);
-          return;
-        }
+      // --- HTTP 500: Internal server error ---
+      if (response.status === 500) {
+        setResult({
+          status: "error",
+          errorCode: ClientErrorCode.INTERNAL_ERROR,
+          stdout: "",
+          stderr: "An unexpected server error occurred. Please try again.",
+          exitCode: null,
+          timeMs: null,
+        });
+        setActiveTab("output");
+        setExecuting(false);
+        return;
       }
 
       if (!response.ok) {
-        throw new Error(`Server returned status ${response.status}`);
+        setResult({
+          status: "error",
+          errorCode: ClientErrorCode.INTERNAL_ERROR,
+          stdout: "",
+          stderr: `Server returned status ${response.status}.`,
+          exitCode: null,
+          timeMs: null,
+        });
+        setActiveTab("output");
+        setExecuting(false);
+        return;
       }
 
-      const resData = await response.json();
+      // --- HTTP 200: Execution result (may be success, error, timeout, etc.) ---
+      const resData = (await response.json()) as {
+        status: ExecutionResult["status"];
+        stdout?: string;
+        stderr?: string;
+        exitCode?: number | null;
+        timeMs?: number | null;
+        compilationOutput?: string;
+        message?: string;
+        errorCode?: string;
+        diagnostics?: DiagnosticMarker[];
+        friendlyMessage?: string | null;
+      };
+
+      // Apply Monaco markers for any diagnostics with valid line numbers
+      const parsedDiagnostics = (resData.diagnostics ?? []).filter(
+        (d): d is DiagnosticMarker & { line: number } => d.line !== null
+      );
+      if (parsedDiagnostics.length > 0) {
+        setDiagnostics(parsedDiagnostics);
+      }
+
       setResult({
         status: resData.status,
-        stdout: resData.stdout,
-        stderr: resData.stderr,
-        exitCode: resData.exitCode,
-        timeMs: resData.timeMs,
+        errorCode: resData.errorCode,
+        stdout: resData.stdout ?? "",
+        stderr: resData.stderr ?? "",
+        exitCode: resData.exitCode ?? null,
+        timeMs: resData.timeMs ?? null,
         compilationOutput: resData.compilationOutput,
+        message: resData.message,
+        diagnostics: resData.diagnostics,
+        friendlyMessage: resData.friendlyMessage,
       });
 
+      // Route to the most relevant tab automatically
       if (resData.status === "compilation_error") {
         setActiveTab("compiler");
-      } else if (resData.status === "runner_unavailable") {
-        setActiveTab("output");
       } else {
         setActiveTab("output");
       }
@@ -138,8 +182,9 @@ export default function App() {
       const error = err as Error;
       setResult({
         status: "error",
+        errorCode: ClientErrorCode.INTERNAL_ERROR,
         stdout: "",
-        stderr: error.message || "Failed to contact host compilation engine.",
+        stderr: error.message || "Failed to contact the compilation server.",
         exitCode: null,
         timeMs: null,
       });
@@ -161,7 +206,12 @@ export default function App() {
       }
     >
       {/* Left Pane: Code Editor container */}
-      <EditorPane code={code} onChangeCode={setCode} detectedLanguage={detectedLanguage} />
+      <EditorPane
+        code={code}
+        onChangeCode={handleCodeChange}
+        detectedLanguage={detectedLanguage}
+        diagnostics={diagnostics}
+      />
 
       {/* Right Pane: Stdin and Tabbed Stdout Console */}
       <Console

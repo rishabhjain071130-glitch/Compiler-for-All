@@ -1,14 +1,26 @@
 import { useRef, useEffect, useState } from "react";
 import Editor, { Monaco, OnMount } from "@monaco-editor/react";
 import { useDebounce } from "../hooks/useDebounce.ts";
+import type { DiagnosticMarker } from "../types/execution.ts";
 
 interface EditorPaneProps {
   code: string;
   onChangeCode: (val: string) => void;
   detectedLanguage: string;
+  /** Structured diagnostics from the compiler — drives Monaco red squiggly markers */
+  diagnostics?: DiagnosticMarker[];
 }
 
-export default function EditorPane({ code, onChangeCode, detectedLanguage }: EditorPaneProps) {
+// Monaco marker severity is an integer enum — we reference it via the instance
+// to avoid importing the full monaco-editor package at the top level.
+const MONACO_MARKER_SOURCE = "compiler";
+
+export default function EditorPane({
+  code,
+  onChangeCode,
+  detectedLanguage,
+  diagnostics,
+}: EditorPaneProps) {
   const [localValue, setLocalValue] = useState<string>(code);
   const debouncedValue = useDebounce(localValue, 500);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
@@ -31,6 +43,46 @@ export default function EditorPane({ code, onChangeCode, detectedLanguage }: Edi
       onChangeCode(debouncedValue);
     }
   }, [debouncedValue, onChangeCode, code]);
+
+  // ---------------------------------------------------------------------------
+  // Monaco diagnostic marker sync
+  //
+  // When `diagnostics` prop updates:
+  //   - If there are diagnostics with valid line numbers → apply Monaco markers
+  //   - If the array is empty → clear all markers (e.g. after a new run starts
+  //     or the user edits the code)
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!editorRef.current || !monacoRef.current) return;
+
+    const model = editorRef.current.getModel();
+    if (!model) return;
+
+    const monaco = monacoRef.current;
+
+    if (!diagnostics || diagnostics.length === 0) {
+      // Clear all markers (code was edited, or new run started)
+      monaco.editor.setModelMarkers(model, MONACO_MARKER_SOURCE, []);
+      return;
+    }
+
+    // Build Monaco IMarkerData array from structured diagnostics
+    const markers = diagnostics
+      .filter((d): d is DiagnosticMarker & { line: number } => d.line !== null)
+      .map((d) => ({
+        severity:
+          d.severity === "warning" ? monaco.MarkerSeverity.Warning : monaco.MarkerSeverity.Error,
+        startLineNumber: d.line,
+        startColumn: d.column ?? 1,
+        endLineNumber: d.line,
+        // Extend marker to end of word or at least one character wide
+        endColumn: d.column !== null ? d.column + 1 : model.getLineMaxColumn(d.line),
+        message: d.message,
+        source: MONACO_MARKER_SOURCE,
+      }));
+
+    monaco.editor.setModelMarkers(model, MONACO_MARKER_SOURCE, markers);
+  }, [diagnostics]);
 
   // Map visual status pill value to Monaco language IDs
   const mapLanguage = (lang: string): string => {
