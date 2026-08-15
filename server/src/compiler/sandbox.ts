@@ -122,12 +122,17 @@ export function buildDockerRunArgs(options: {
   image: string;
   commandStr: string;
   useGvisor?: boolean;
+  containerName?: string;
 }): string[] {
   const volumePath = toDockerVolumePath(options.workspaceDir);
 
-  const args: string[] = [
-    "run",
-    "--rm",
+  const args: string[] = ["run", "--rm"];
+
+  if (options.containerName) {
+    args.push("--name", options.containerName);
+  }
+
+  args.push(
     "--network",
     "none",
     "-m",
@@ -140,7 +145,7 @@ export function buildDockerRunArgs(options: {
     "1000:1000",
     "--read-only",
     "--tmpfs",
-    `/tmp:rw,noexec,nosuid,size=${SANDBOX_LIMITS.TMPFS_SIZE_MB}m`,
+    `/tmp:rw,exec,nosuid,size=${SANDBOX_LIMITS.TMPFS_SIZE_MB}m`,
     "--pids-limit",
     String(SANDBOX_LIMITS.PIDS_LIMIT),
     "--ulimit",
@@ -148,8 +153,8 @@ export function buildDockerRunArgs(options: {
     "-v",
     `${volumePath}:/workspace:ro`,
     "-w",
-    "/tmp",
-  ];
+    "/tmp"
+  );
 
   if (options.useGvisor) {
     args.push("--runtime=runsc");
@@ -262,15 +267,18 @@ export class DockerSandbox implements CodeRunner {
         hasStdin
       );
 
+      const containerName = `cfa-exec-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
       const dockerArgs = buildDockerRunArgs({
         workspaceDir,
         image,
         commandStr: shellCmd,
         useGvisor: gvisorOk,
+        containerName,
       });
 
       const startTime = Date.now();
-      const execResult = await this.spawnDockerContainer(dockerArgs);
+      const execResult = await this.spawnDockerContainer(dockerArgs, containerName);
       const durationMs = Date.now() - startTime;
 
       return this.processSandboxResult(
@@ -300,7 +308,10 @@ export class DockerSandbox implements CodeRunner {
     }
   }
 
-  private spawnDockerContainer(args: string[]): Promise<{
+  private spawnDockerContainer(
+    args: string[],
+    containerName?: string
+  ): Promise<{
     stdout: string;
     stderr: string;
     exitCode: number | null;
@@ -315,9 +326,16 @@ export class DockerSandbox implements CodeRunner {
         windowsHide: true,
       });
 
-      const timer = setTimeout(() => {
+      const timer = setTimeout(async () => {
         timedOut = true;
         child.kill("SIGKILL");
+        if (containerName) {
+          try {
+            await execFileAsync("docker", ["rm", "-f", containerName], { timeout: 3000 });
+          } catch {
+            // Container already cleaned up or removed
+          }
+        }
       }, SANDBOX_LIMITS.TOTAL_TIMEOUT_MS);
 
       child.stdout.on("data", (chunk: Buffer) => {

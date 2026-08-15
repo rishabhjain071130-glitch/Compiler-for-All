@@ -139,15 +139,15 @@ describe("Phase 8: Security Sandbox Unit & Configuration Tests", () => {
   // -------------------------------------------------------------------------
   // 13. Security Arg: RAM Tmpfs
   // -------------------------------------------------------------------------
-  it("(T13) mounts restricted RAM-disk tmpfs (--tmpfs /tmp:rw,noexec,nosuid,size=5m)", () => {
+  it("(T13) mounts restricted RAM-disk tmpfs (--tmpfs /tmp:rw,exec,nosuid,size=5m)", () => {
     const args = buildDockerRunArgs({
       workspaceDir: "/tmp/test",
-      image: "gcc:12-slim",
+      image: "gcc:12-bookworm",
       commandStr: "gcc /workspace/main.c",
     });
     expect(args).toContain("--tmpfs");
     const tmpfsIdx = args.indexOf("--tmpfs");
-    expect(args[tmpfsIdx + 1]).toContain("/tmp:rw,noexec,nosuid,size=5m");
+    expect(args[tmpfsIdx + 1]).toContain("/tmp:rw,exec,nosuid,size=5m");
   });
 
   // -------------------------------------------------------------------------

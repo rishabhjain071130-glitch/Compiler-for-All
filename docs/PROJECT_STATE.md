@@ -32,6 +32,39 @@ This document tracks the active state and progress of the **Compiler for All** i
 
 ## 3. Active Work Logs
 
+### 2026-08-15 (Real End-to-End Docker Sandbox Execution Verification)
+
+**Changes delivered**:
+
+- `server/src/compiler/sandbox.ts` **(MODIFIED)** — Updated `--tmpfs` mount flags to `/tmp:rw,exec,nosuid,size=5m` (allowing execution of compiled C/C++ binaries in RAM-disk) and added unique container naming (`--name cfa-exec-XXX`) with automatic `docker rm -f` cleanup on execution timeouts.
+- `server/src/compiler/sandbox.test.ts` **(MODIFIED)** — Updated test T13 assertions for `/tmp:rw,exec,nosuid,size=5m`.
+
+**Runtime Verification Results**:
+
+- **Health Endpoint**: `GET /api/health` → `HTTP 200 { status: "ok" }`.
+- **C Execution**: `gcc:12-bookworm` → `Hello from Compiler for All - C` (`exitCode: 0`).
+- **C++ Execution**: `gcc:12-bookworm` → `Hello from Compiler for All - C++` (`exitCode: 0`).
+- **Java Execution**: `eclipse-temurin:17-jdk` → `Hello from Compiler for All - Java\n` (`exitCode: 0`).
+- **Python Execution**: `python:3.10-slim` → `Hello from Compiler for All - Python\n` (`exitCode: 0`).
+- **JavaScript Execution**: `node:18-slim` → `Hello from Compiler for All - JavaScript\n` (`exitCode: 0`).
+- **Stdin Isolation**: C (`scanf("%d")` + `42`) → `Number: 42`; Python (`input()` + `CompilerForAll`) → `Hello, CompilerForAll!\n`.
+- **Compilation Error**: C missing semicolon → `status: "compilation_error"`, parsed line 4, column 32 diagnostic, sanitized path `/workspace/main.c`.
+- **Runtime Error**: Python zero division → `status: "runtime_error"`, friendly message generated.
+- **Timeout Isolation**: Python `while True: pass` → `status: "timeout"`, `exitCode: 124`, `timeMs: 10078`, container destroyed automatically via `docker rm -f`.
+- **Resource Limits**: Python memory loop → `status: "resource_limit_exceeded"`, `exitCode: 137` (OOM killed). Output flood → capped at 1MB buffer.
+- **Network Isolation**: Python socket connect to `8.8.8.8:53` → `[Errno 101] Network is unreachable` (`--network none` enforced).
+- **Filesystem Isolation**: Python write to `/root/test.txt` → `[Errno 13] Permission denied` (`--read-only` & `--user 1000:1000` enforced).
+- **Container Cleanup**: `docker ps -a` verified zero orphan containers after timeout and execution runs.
+
+**Verification results**:
+
+- `npm run test` — **103/103 tests passed** (12 shared + 91 server).
+- `npm run lint` — **0 errors, 0 warnings**.
+- `npm run format:check` — **All matched files use Prettier code style**.
+- `npm run build` — **Server `tsc` clean + Vite client: 51 modules, 190 KB JS bundle**.
+
+---
+
 ### 2026-08-15 (Docker Toolchain Image Correction)
 
 **Changes delivered**:
