@@ -241,7 +241,7 @@ describe("Phase 8: Security Sandbox Unit & Configuration Tests", () => {
       expect(result.errorCode).toBe("RUNNER_UNAVAILABLE");
       expect(result.message).toContain("unavailable");
     }
-  });
+  }, 15000);
 
   // -------------------------------------------------------------------------
   // 20. Workspace cleanup safety

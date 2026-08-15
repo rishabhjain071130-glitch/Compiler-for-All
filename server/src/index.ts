@@ -22,6 +22,23 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
+
+// Graceful Shutdown Handler
+function shutdown(signal: string): void {
+  console.log(`[server] Received ${signal}, initiating graceful shutdown...`);
+  server.close(() => {
+    console.log("[server] HTTP server closed cleanly.");
+    process.exit(0);
+  });
+
+  setTimeout(() => {
+    console.error("[server] Forced shutdown after 10s timeout.");
+    process.exit(1);
+  }, 10000).unref();
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  # Express Backend API & Sandbox Manager
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: cfa-server
+    restart: unless-stopped
+    volumes:
+      # Mount host Docker socket for Docker-out-of-Docker (DooD) container orchestration
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - PORT=5000
+      - NODE_ENV=production
+      - CORS_ORIGIN=${CORS_ORIGIN:-*}
+    networks:
+      - cfa-network
+
+  # Nginx Reverse Proxy & React Frontend SPA
+  client:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    container_name: cfa-client
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+    networks:
+      - cfa-network
+
+networks:
+  cfa-network:
+    driver: bridge
