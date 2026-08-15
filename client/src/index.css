@@ -2,6 +2,7 @@
   /* Colors */
   --bg-primary: #0a0e17;
   --bg-panel: rgba(16, 22, 35, 0.65);
+  --bg-panel-hover: rgba(22, 30, 48, 0.75);
   --bg-textarea: rgba(9, 13, 24, 0.85);
   --border-color: rgba(255, 255, 255, 0.07);
   --border-hover: rgba(255, 255, 255, 0.15);
@@ -12,9 +13,13 @@
 
   /* Accent status colors */
   --accent-cyan: #06b6d4;
+  --accent-cyan-glow: rgba(6, 182, 212, 0.25);
   --accent-green: #10b981;
+  --accent-green-glow: rgba(16, 185, 129, 0.25);
   --accent-amber: #f59e0b;
+  --accent-amber-glow: rgba(245, 158, 11, 0.25);
   --accent-rose: #f43f5e;
+  --accent-rose-glow: rgba(244, 63, 94, 0.25);
 
   /* Shadows and Blurs */
   --glass-blur: blur(16px);
@@ -40,6 +45,13 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Accessibility Focus Ring Outlines */
+:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* Scrollbar Customization */
@@ -71,7 +83,8 @@ body {
   box-shadow: var(--glass-shadow);
   transition:
     border-color 0.2s ease,
-    box-shadow 0.2s ease;
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
 }
 
 .glass-panel:hover {
@@ -102,6 +115,21 @@ body {
 
 .animate-spin {
   animation: spin 1s linear infinite;
+}
+
+/* Respect user reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-spin {
+    animation: none !important;
+  }
 }
 
 /* Styling overlays */
@@ -136,15 +164,28 @@ body {
   overflow: hidden;
 }
 
+/* Tablet & Mobile Responsiveness */
 @media (max-width: 1024px) {
   .workspace-grid {
     grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1.2fr;
+    grid-template-rows: 1fr 1fr;
     overflow-y: auto;
-    padding-bottom: 20px;
+    gap: 12px;
+    padding-bottom: 8px;
   }
 
   body {
     overflow-y: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-container {
+    padding: 8px;
+  }
+
+  .workspace-grid {
+    grid-template-rows: 400px 1fr;
+    gap: 8px;
   }
 }

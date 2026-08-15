@@ -11,8 +11,6 @@ interface EditorPaneProps {
   diagnostics?: DiagnosticMarker[];
 }
 
-// Monaco marker severity is an integer enum — we reference it via the instance
-// to avoid importing the full monaco-editor package at the top level.
 const MONACO_MARKER_SOURCE = "compiler";
 
 export default function EditorPane({
@@ -46,11 +44,6 @@ export default function EditorPane({
 
   // ---------------------------------------------------------------------------
   // Monaco diagnostic marker sync
-  //
-  // When `diagnostics` prop updates:
-  //   - If there are diagnostics with valid line numbers → apply Monaco markers
-  //   - If the array is empty → clear all markers (e.g. after a new run starts
-  //     or the user edits the code)
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!editorRef.current || !monacoRef.current) return;
@@ -61,12 +54,10 @@ export default function EditorPane({
     const monaco = monacoRef.current;
 
     if (!diagnostics || diagnostics.length === 0) {
-      // Clear all markers (code was edited, or new run started)
       monaco.editor.setModelMarkers(model, MONACO_MARKER_SOURCE, []);
       return;
     }
 
-    // Build Monaco IMarkerData array from structured diagnostics
     const markers = diagnostics
       .filter((d): d is DiagnosticMarker & { line: number } => d.line !== null)
       .map((d) => ({
@@ -75,7 +66,6 @@ export default function EditorPane({
         startLineNumber: d.line,
         startColumn: d.column ?? 1,
         endLineNumber: d.line,
-        // Extend marker to end of word or at least one character wide
         endColumn: d.column !== null ? d.column + 1 : model.getLineMaxColumn(d.line),
         message: d.message,
         source: MONACO_MARKER_SOURCE,
@@ -92,10 +82,10 @@ export default function EditorPane({
     if (normalized.includes("python")) return "python";
     if (normalized.includes("javascript") || normalized.includes("js")) return "javascript";
     if (normalized === "c") return "c";
-    return "javascript"; // fallback
+    return "javascript";
   };
 
-  // Sync model language dynamically when detectedLanguage updates
+  // Sync model language dynamically without rebuilding editor instance
   useEffect(() => {
     if (editorRef.current && monacoRef.current) {
       const model = editorRef.current.getModel();
@@ -110,7 +100,7 @@ export default function EditorPane({
     editorRef.current = editor;
     monacoRef.current = monaco;
 
-    // Define custom slate-dark/cyan editor theme matching glassmorphic panel variables
+    // Define custom slate-dark/cyan editor theme
     monaco.editor.defineTheme("compilerForAllTheme", {
       base: "vs-dark",
       inherit: true,
@@ -142,11 +132,20 @@ export default function EditorPane({
     }
   };
 
+  const diagnosticCount = diagnostics?.filter((d) => d.line !== null).length || 0;
+
   return (
-    <div style={styles.container} className="glass-panel">
+    <div style={styles.container} className="glass-panel" role="region" aria-label="Source Editor">
       <div style={styles.header}>
         <span style={styles.title}>Source Editor</span>
-        <span style={styles.badge}>Monaco Sandbox Active</span>
+        <div style={styles.badgeGroup}>
+          {diagnosticCount > 0 && (
+            <span style={styles.badgeError} role="status">
+              {diagnosticCount} {diagnosticCount === 1 ? "Error" : "Errors"} Highlighted
+            </span>
+          )}
+          <span style={styles.badge}>Monaco Sandbox Active</span>
+        </div>
       </div>
 
       <div style={styles.editorBody}>
@@ -207,6 +206,11 @@ const styles = {
     letterSpacing: "0.05em",
     textTransform: "uppercase" as const,
   },
+  badgeGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  },
   badge: {
     fontSize: "0.7rem",
     backgroundColor: "rgba(6, 182, 212, 0.08)",
@@ -215,6 +219,15 @@ const styles = {
     padding: "2px 8px",
     borderRadius: "4px",
     fontWeight: 500,
+  },
+  badgeError: {
+    fontSize: "0.7rem",
+    backgroundColor: "rgba(244, 63, 94, 0.1)",
+    border: "1px solid rgba(244, 63, 94, 0.25)",
+    color: "#f87171",
+    padding: "2px 8px",
+    borderRadius: "4px",
+    fontWeight: 600,
   },
   editorBody: {
     flex: 1,

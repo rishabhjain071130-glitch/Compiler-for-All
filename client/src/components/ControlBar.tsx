@@ -15,20 +15,28 @@ export default function ControlBar({
   const isDetected = detectedLanguage.toLowerCase() !== "detecting..." && confidence > 0;
 
   return (
-    <div style={styles.container} className="glass-panel">
-      {/* Left side: Speculative pill */}
+    <div
+      style={styles.container}
+      className="glass-panel"
+      role="region"
+      aria-label="Action Controls"
+    >
+      {/* Left side: Speculative language detection indicator */}
       <div style={styles.left}>
         <div
           style={{
             ...styles.pill,
             ...(isDetected ? styles.pillDetected : styles.pillDetecting),
           }}
+          aria-live="polite"
+          aria-atomic="true"
         >
           <span
             style={{
               ...styles.pillDot,
               ...(isDetected ? styles.pillDotActive : styles.pillDotSearching),
             }}
+            aria-hidden="true"
           ></span>
           <span style={styles.pillLabel}>Language:</span>
           <span style={styles.pillValue}>
@@ -39,11 +47,14 @@ export default function ControlBar({
         <span style={styles.helpText}>No dropdown needed—just start writing code.</span>
       </div>
 
-      {/* Right side: Execution trigger */}
+      {/* Right side: Execution trigger button */}
       <div style={styles.right}>
         <button
+          type="button"
           onClick={onRun}
           disabled={executing}
+          aria-label={executing ? "Executing code in sandbox" : "Run Code"}
+          aria-busy={executing}
           style={{
             ...styles.runButton,
             ...(executing ? styles.runButtonDisabled : {}),
@@ -52,7 +63,12 @@ export default function ControlBar({
           {executing ? (
             <>
               {/* Spinner */}
-              <svg style={styles.spinner} className="animate-spin" viewBox="0 0 24 24">
+              <svg
+                style={styles.spinner}
+                className="animate-spin"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
                 <circle
                   style={styles.spinnerCircle}
                   cx="12"
@@ -72,7 +88,9 @@ export default function ControlBar({
             </>
           ) : (
             <>
-              <span style={styles.playIcon}>▶</span>
+              <span style={styles.playIcon} aria-hidden="true">
+                ▶
+              </span>
               <span>Run Code</span>
             </>
           )}

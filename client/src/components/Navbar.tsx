@@ -1,21 +1,27 @@
 export default function Navbar() {
   return (
-    <nav style={styles.nav} className="glass-panel">
-      <div style={styles.left}>
-        <div style={styles.logoContainer}>
-          <span style={styles.logoIcon}>&lt;/&gt;</span>
-          <span style={styles.logoText}>Compiler for All</span>
+    <header role="banner">
+      <nav style={styles.nav} className="glass-panel" aria-label="Main Navigation">
+        <div style={styles.left}>
+          <div style={styles.logoContainer}>
+            <span style={styles.logoIcon} aria-hidden="true">
+              &lt;/&gt;
+            </span>
+            <span style={styles.logoText}>Compiler for All</span>
+          </div>
+          <span style={styles.divider} aria-hidden="true">
+            |
+          </span>
+          <span style={styles.tagline}>Auto-Detecting Sandbox Editor</span>
         </div>
-        <span style={styles.divider}>|</span>
-        <span style={styles.tagline}>Auto-Detecting Sandbox Editor</span>
-      </div>
-      <div style={styles.right}>
-        <div style={styles.statusGroup}>
-          <span style={styles.statusDot}></span>
-          <span style={styles.statusText}>Cloud Runner Active</span>
+        <div style={styles.right}>
+          <div style={styles.statusGroup} role="status" aria-label="Execution Engine Status">
+            <span style={styles.statusDot} aria-hidden="true"></span>
+            <span style={styles.statusText}>Cloud Sandbox Active</span>
+          </div>
         </div>
-      </div>
-    </nav>
+      </nav>
+    </header>
   );
 }
 

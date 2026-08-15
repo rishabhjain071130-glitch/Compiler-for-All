@@ -1,3 +1,4 @@
+import { KeyboardEvent } from "react";
 import { DetectionResult } from "../../../shared/detector.ts";
 import { ExecutionResult, ClientErrorCode } from "../types/execution.ts";
 
@@ -13,15 +14,15 @@ interface ConsoleProps {
 
 // ---------------------------------------------------------------------------
 // FriendlyMessage — renders a beginner-friendly error explanation card.
-// Supports simple **bold** markdown in the message string.
 // ---------------------------------------------------------------------------
 
 function FriendlyMessage({ message }: { message: string }) {
-  // Render **text** as bold spans
   const parts = message.split(/(\*\*[^*]+\*\*)/g);
   return (
-    <div style={styles.friendlyCard}>
-      <span style={styles.friendlyIcon}>💡</span>
+    <div style={styles.friendlyCard} role="note" aria-label="Beginner Error Guide">
+      <span style={styles.friendlyIcon} aria-hidden="true">
+        💡
+      </span>
       <p style={styles.friendlyText}>
         {parts.map((part, i) => {
           if (part.startsWith("**") && part.endsWith("**")) {
@@ -34,6 +35,12 @@ function FriendlyMessage({ message }: { message: string }) {
   );
 }
 
+const TABS = [
+  { id: "output", label: "Console Output" },
+  { id: "compiler", label: "Compiler Output" },
+  { id: "metrics", label: "Metrics" },
+];
+
 export default function Console({
   stdin,
   onChangeStdin,
@@ -43,18 +50,37 @@ export default function Console({
   executing,
   detectionResult,
 }: ConsoleProps) {
-  // ---------------------------------------------------------------------------
-  // renderOutput — maps execution status to UI for the selected tab
-  // ---------------------------------------------------------------------------
+  // Arrow key keyboard navigation for ARIA tablist
+  const handleKeyDownTab = (e: KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
+    let nextIndex = currentIndex;
+    if (e.key === "ArrowRight") {
+      nextIndex = (currentIndex + 1) % TABS.length;
+    } else if (e.key === "ArrowLeft") {
+      nextIndex = (currentIndex - 1 + TABS.length) % TABS.length;
+    } else {
+      return;
+    }
+    e.preventDefault();
+    onChangeTab(TABS[nextIndex].id);
+    const el = document.getElementById(`tab-${TABS[nextIndex].id}`);
+    if (el) el.focus();
+  };
+
   const renderOutput = () => {
     if (executing) {
-      return <div style={styles.logTextMuted}>Executing sandboxed environment...</div>;
+      return (
+        <div style={styles.logTextMuted} role="status">
+          Executing sandboxed environment...
+        </div>
+      );
     }
 
     if (!result || result.status === null) {
       return (
         <div style={styles.emptyState}>
-          <span style={styles.emptyIcon}>📭</span>
+          <span style={styles.emptyIcon} aria-hidden="true">
+            📭
+          </span>
           <span>Click &quot;Run Code&quot; to view execution output.</span>
         </div>
       );
@@ -63,40 +89,32 @@ export default function Console({
     switch (activeTab) {
       case "output":
         return renderOutputTab(result);
-
       case "compiler":
         return renderCompilerTab(result);
-
       case "metrics":
         return renderMetricsTab(result, detectionResult);
-
       default:
         return null;
     }
   };
 
-  // ---------------------------------------------------------------------------
-  // renderOutputTab — Console Output tab content
-  // ---------------------------------------------------------------------------
   const renderOutputTab = (r: ExecutionResult) => {
-    // Sandbox unavailable — Phase 6/7 default state
     if (r.status === "runner_unavailable") {
       return (
-        <div style={styles.sandboxBanner}>
+        <div style={styles.sandboxBanner} role="alert">
           <span style={styles.badgeAmber}>⚙️ Sandbox Not Available</span>
           <p style={styles.errorTitle}>The isolated execution environment is not yet active.</p>
           <p style={styles.sandboxNote}>
-            Code execution requires a sandboxed runner (Phase 8: Sandbox Isolation). No code was
+            Docker daemon is not running or not installed on the host system. No user code was
             executed on the host system.
           </p>
         </div>
       );
     }
 
-    // Language not detected
     if (r.status === "error" && r.errorCode === ClientErrorCode.LANGUAGE_NOT_DETECTED) {
       return (
-        <div style={styles.detectionBanner}>
+        <div style={styles.detectionBanner} role="alert">
           <span style={styles.badgeAmber}>🔍 Language Not Detected</span>
           <p style={styles.errorTitle}>
             {r.message ||
@@ -110,16 +128,19 @@ export default function Console({
       );
     }
 
-    // Compilation error — direct the user to the Compiler Output tab
     if (r.status === "compilation_error") {
       return (
-        <div style={styles.errorBanner}>
+        <div style={styles.errorBanner} role="alert">
           <span style={styles.badgeRose}>Compilation Failed</span>
           <p style={styles.errorTitle}>
             The compiler encountered errors. Check the{" "}
-            <strong style={{ color: "var(--accent-cyan)", cursor: "pointer" }}>
+            <button
+              type="button"
+              onClick={() => onChangeTab("compiler")}
+              style={styles.inlineLinkButton}
+            >
               Compiler Output
-            </strong>{" "}
+            </button>{" "}
             tab for detailed messages.
           </p>
           {r.friendlyMessage && <FriendlyMessage message={r.friendlyMessage} />}
@@ -127,10 +148,9 @@ export default function Console({
       );
     }
 
-    // Runtime timeout
     if (r.status === "timeout") {
       return (
-        <div style={styles.errorBanner}>
+        <div style={styles.errorBanner} role="alert">
           <span style={styles.badgeRose}>Timeout — Execution Limit Exceeded</span>
           <p style={styles.errorTitle}>
             Your code exceeded the maximum execution time (5 seconds). Check for infinite loops or
@@ -141,24 +161,23 @@ export default function Console({
       );
     }
 
-    // Resource limit exceeded
     if (r.status === "resource_limit_exceeded") {
       return (
-        <div style={styles.errorBanner}>
+        <div style={styles.errorBanner} role="alert">
           <span style={styles.badgeRose}>Resource Limit Exceeded</span>
           <p style={styles.errorTitle}>
-            Your code exceeded the memory limit (64 MB) or another resource quota and was terminated
-            by the sandbox.
+            Your code exceeded the memory limit (64 MB) or process quota and was terminated by the
+            sandbox.
           </p>
+          {r.friendlyMessage && <FriendlyMessage message={r.friendlyMessage} />}
         </div>
       );
     }
 
-    // Runtime error — show stderr and friendly message
     if (r.status === "runtime_error") {
       return (
         <div style={styles.errorContainer}>
-          <div style={styles.errorBanner}>
+          <div style={styles.errorBanner} role="alert">
             <span style={styles.badgeRose}>Runtime Error</span>
             <p style={styles.errorTitle}>
               Your program exited with an error.
@@ -176,12 +195,10 @@ export default function Console({
       );
     }
 
-    // Generic error (invalid request, language not detected, etc.)
     if (r.status === "error") {
       return renderErrorByCode(r);
     }
 
-    // Success — display stdout
     return (
       <div style={styles.outputContainer}>
         {r.stdout ? (
@@ -195,14 +212,11 @@ export default function Console({
     );
   };
 
-  // ---------------------------------------------------------------------------
-  // renderErrorByCode — maps error codes to specific UI banners
-  // ---------------------------------------------------------------------------
   const renderErrorByCode = (r: ExecutionResult) => {
     switch (r.errorCode) {
       case ClientErrorCode.TOOLCHAIN_NOT_FOUND:
         return (
-          <div style={styles.detectionBanner}>
+          <div style={styles.detectionBanner} role="alert">
             <span style={styles.badgeAmber}>⚙️ Toolchain Not Available</span>
             <p style={styles.errorTitle}>
               {r.message ||
@@ -212,14 +226,14 @@ export default function Console({
         );
       case ClientErrorCode.CODE_TOO_LARGE:
         return (
-          <div style={styles.errorBanner}>
+          <div style={styles.errorBanner} role="alert">
             <span style={styles.badgeRose}>Code Too Large</span>
             <p style={styles.errorTitle}>{r.message || "Code payload exceeds the 64 KB limit."}</p>
           </div>
         );
       case ClientErrorCode.STDIN_TOO_LARGE:
         return (
-          <div style={styles.errorBanner}>
+          <div style={styles.errorBanner} role="alert">
             <span style={styles.badgeRose}>Stdin Too Large</span>
             <p style={styles.errorTitle}>
               {r.message || "Standard input payload exceeds the 16 KB limit."}
@@ -228,7 +242,7 @@ export default function Console({
         );
       case ClientErrorCode.UNSUPPORTED_LANGUAGE:
         return (
-          <div style={styles.detectionBanner}>
+          <div style={styles.detectionBanner} role="alert">
             <span style={styles.badgeAmber}>Unsupported Language</span>
             <p style={styles.errorTitle}>
               {r.message ||
@@ -238,7 +252,7 @@ export default function Console({
         );
       case ClientErrorCode.INTERNAL_ERROR:
         return (
-          <div style={styles.errorBanner}>
+          <div style={styles.errorBanner} role="alert">
             <span style={styles.badgeRose}>Internal Server Error</span>
             <p style={styles.errorTitle}>
               {r.message || "An unexpected server error occurred. Please try again in a moment."}
@@ -247,7 +261,7 @@ export default function Console({
         );
       default:
         return (
-          <div style={styles.errorBanner}>
+          <div style={styles.errorBanner} role="alert">
             <span style={styles.badgeRose}>Error</span>
             <p style={styles.errorTitle}>
               {r.stderr || r.message || "An error occurred. Please try again."}
@@ -257,9 +271,6 @@ export default function Console({
     }
   };
 
-  // ---------------------------------------------------------------------------
-  // renderCompilerTab — Compiler Output tab content
-  // ---------------------------------------------------------------------------
   const renderCompilerTab = (r: ExecutionResult) => {
     const compText = r.compilationOutput || (r.status === "compilation_error" ? r.stderr : "");
     const hasDiagnosticsWithLocation = r.diagnostics && r.diagnostics.some((d) => d.line !== null);
@@ -267,7 +278,7 @@ export default function Console({
     return (
       <div style={styles.outputContainer}>
         {hasDiagnosticsWithLocation && (
-          <div style={styles.diagnosticsBanner}>
+          <div style={styles.diagnosticsBanner} role="note">
             <span style={styles.diagnosticsLabel}>🔴 Editor markers applied</span>
             <span style={styles.diagnosticsNote}>
               Error locations are highlighted in the code editor.
@@ -283,9 +294,6 @@ export default function Console({
     );
   };
 
-  // ---------------------------------------------------------------------------
-  // renderMetricsTab — Metrics tab content
-  // ---------------------------------------------------------------------------
   const renderMetricsTab = (r: ExecutionResult, det: DetectionResult) => {
     const statusColor =
       r.status === "success"
@@ -314,7 +322,7 @@ export default function Console({
         </div>
         <div style={styles.metricRow}>
           <span style={styles.metricLabel}>Sandbox Runtime:</span>
-          <span style={styles.metricValue}>gVisor Kernel Sandbox</span>
+          <span style={styles.metricValue}>gVisor / Docker Isolation</span>
         </div>
 
         <div style={styles.metricSectionHeader}>Language Detection Metrics</div>
@@ -330,9 +338,9 @@ export default function Console({
           <span style={styles.metricLabel}>Engine Reasons / Signals:</span>
           {det.reasons.length > 0 ? (
             <ul style={styles.reasonsList}>
-              {det.reasons.map((r, i) => (
+              {det.reasons.map((reason, i) => (
                 <li key={i} style={styles.reasonItem}>
-                  {r}
+                  {reason}
                 </li>
               ))}
             </ul>
@@ -347,7 +355,12 @@ export default function Console({
   return (
     <div style={styles.container}>
       {/* Input Panel (stdin) */}
-      <div style={styles.inputCard} className="glass-panel">
+      <div
+        style={styles.inputCard}
+        className="glass-panel"
+        role="region"
+        aria-label="Console Input"
+      >
         <div style={styles.panelHeader}>
           <span style={styles.title}>Console Input (stdin)</span>
         </div>
@@ -356,45 +369,53 @@ export default function Console({
           onChange={(e) => onChangeStdin(e.target.value)}
           placeholder="Type arguments or standard input streams here..."
           style={styles.stdinTextarea}
+          aria-label="Standard input buffer"
           spellCheck={false}
         />
       </div>
 
-      {/* Output Panel */}
-      <div style={styles.outputCard} className="glass-panel">
+      {/* Output Panel with Accessible Tablist */}
+      <div
+        style={styles.outputCard}
+        className="glass-panel"
+        role="region"
+        aria-label="Console Output"
+      >
         <div style={styles.tabHeader}>
-          <div style={styles.tabs}>
-            <button
-              onClick={() => onChangeTab("output")}
-              style={{
-                ...styles.tabButton,
-                ...(activeTab === "output" ? styles.activeTabButton : {}),
-              }}
-            >
-              Console Output
-            </button>
-            <button
-              onClick={() => onChangeTab("compiler")}
-              style={{
-                ...styles.tabButton,
-                ...(activeTab === "compiler" ? styles.activeTabButton : {}),
-              }}
-            >
-              Compiler Output
-            </button>
-            <button
-              onClick={() => onChangeTab("metrics")}
-              style={{
-                ...styles.tabButton,
-                ...(activeTab === "metrics" ? styles.activeTabButton : {}),
-              }}
-            >
-              Metrics
-            </button>
+          <div style={styles.tabs} role="tablist" aria-label="Console Output Tabs">
+            {TABS.map((tab, idx) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  id={`tab-${tab.id}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  aria-controls={`panel-${tab.id}`}
+                  tabIndex={isActive ? 0 : -1}
+                  onClick={() => onChangeTab(tab.id)}
+                  onKeyDown={(e) => handleKeyDownTab(e, idx)}
+                  style={{
+                    ...styles.tabButton,
+                    ...(isActive ? styles.activeTabButton : {}),
+                  }}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div style={styles.outputBody}>{renderOutput()}</div>
+        <div
+          id={`panel-${activeTab}`}
+          role="tabpanel"
+          aria-labelledby={`tab-${activeTab}`}
+          style={styles.outputBody}
+        >
+          {renderOutput()}
+        </div>
       </div>
     </div>
   );
@@ -408,7 +429,7 @@ const styles = {
     height: "100%",
   },
   inputCard: {
-    height: "150px",
+    height: "140px",
     display: "flex",
     flexDirection: "column" as const,
     overflow: "hidden",
@@ -478,6 +499,18 @@ const styles = {
     color: "var(--accent-cyan)",
     borderBottom: "2px solid var(--accent-cyan)",
     backgroundColor: "rgba(255, 255, 255, 0.02)",
+  },
+  inlineLinkButton: {
+    border: "none",
+    outline: "none",
+    backgroundColor: "transparent",
+    color: "var(--accent-cyan)",
+    fontWeight: 700,
+    cursor: "pointer",
+    textDecoration: "underline",
+    fontSize: "inherit",
+    fontFamily: "inherit",
+    padding: 0,
   },
   outputBody: {
     flex: 1,
